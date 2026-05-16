@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Restaurante">
+<title>Sistema Restaurante</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  body { background: #07080F; color: #F1F5F9; font-family: -apple-system, 'Segoe UI', sans-serif; overflow-x: hidden; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  .fade { animation: fadein 0.2s ease forwards; }
+  select, input, button { -webkit-appearance: none; appearance: none; font-family: inherit; }
+  input { outline: none; }
+  select { outline: none; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #07080F; }
+  ::-webkit-scrollbar-thumb { background: #151929; border-radius: 2px; }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+const BG="#07080F",CARD="#0E1120",BORD="#1A2035",SURF="#151929";
+const ACC="#F97316",BLUE="#3B82F6",GREEN="#22C55E",RED="#EF4444";
+const YEL="#EAB308",PUR="#A855F7",TEXT="#F1F5F9",MUT="#475569";
+const MODEL="claude-haiku-4-5-20251001";
+
+// ── Configuración de servicios ──────────────────────────────
+const SUPABASE_URL = "https://epgyvdbqinfucajvscns.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwZ3l2ZGJxaW5mdWNhanZzY25zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MzAyMTgsImV4cCI6MjA5NDUwNjIxOH0.7gZGGP3JLDyKz5JJcLpJKfRFWkGeZnT68sonIUQKNeY";
+const RAILWAY_URL  = "https://galea-pwa-production.up.railway.app";
+
+// Helper Supabase REST
+async function sb(path, opts={}) {
+  const url = SUPABASE_URL + "/rest/v1/" + path;
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json",
+      "Prefer": opts.prefer || "return=representation",
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : null;
+}
+
+let nextId=200;
+function uid(){return ++nextId;}
+function hoy(){return new Date().toLocaleDateString("es-MX");}
+function fmt(n){return "$"+Number(n).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function pct(n){return (n*100).toFixed(1)+"%";}
+function subCosto(sub,alm){const t=sub.ings.reduce((s,l)=>{const i=alm.find(a=>a.id===l.id);return s+(i?i.precio*l.q:0);},0);return sub.rend>0?t/sub.rend:0;}
+function recCosto(rec,alm,subs){return rec.lineas.reduce((s,l)=>{if(l.t==="ING"){const i=alm.find(a=>a.id===l.i);return s+(i?i.precio*l.q:0);}const sub=subs.find(sr=>sr.id===l.i);return s+(sub?subCosto(sub,alm)*l.q:0);},0);}
+function stSt(a){if(a.stock<=a.min)return"reponer";if(a.stock>=a.max)return"sobre";return"ok";}
+function catC(cat){if(cat==="Carnes")return RED;if(cat==="Lacteos"||cat==="Mariscos")return BLUE;if(cat==="Verduras"||cat==="Frutas")return GREEN;if(cat==="Especias"||cat==="Salsas")return PUR;return YEL;}
+function fcC(fc){return fc<=0.25?GREEN:fc<=0.35?YEL:RED;}
+function fcL(fc){return fc<=0.25?"Estrella":fc<=0.35?"Rentable":fc<=0.45?"Revisar":"Perdida";}
+
+function Tag({color=BLUE,children}){return <span style={{background:color+"22",color,border:"1px solid "+color+"55",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;}
+function Box({children,bc=BORD,style={}}){return <div style={{background:CARD,border:"1px solid "+bc,borderRadius:12,padding:14,...style}}>{children}</div>;}
+function Row({children,style={}}){return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",...style}}>{children}</div>;}
+function Btn({children,onClick,color=ACC,outline=false,sm=false,style={}}){return <button onClick={onClick} style={{padding:sm?"6px 12px":"10px 16px",borderRadius:8,border:outline?"1px solid "+BORD:"none",background:outline?"transparent":color,color:outline?MUT:"#fff",fontWeight:700,fontSize:sm?12:13,cursor:"pointer",...style}}>{children}</button>;}
+function Fld({value,onChange,placeholder,type="text",style={}}){return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:SURF,border:"1px solid "+BORD,borderRadius:8,padding:"8px 10px",color:TEXT,fontSize:13,width:"100%",...style}}/>;}
+function Sel({value,onChange,children,style={}}){return <select value={value} onChange={e=>onChange(e.target.value)} style={{background:SURF,border:"1px solid "+BORD,borderRadius:8,padding:"8px 10px",color:TEXT,fontSize:13,width:"100%",...style}}>{children}</select>;}
+function Kpi({icon,label,value,color=ACC}){return <Box style={{flex:1,minWidth:0}}><p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>{icon} {label}</p><p style={{color,fontSize:20,fontWeight:800}}>{value}</p></Box>;}
+
+function Dashboard({alm,subs,recs}){
+  const al=alm.filter(a=>stSt(a)==="reponer").length;
+  const val=alm.reduce((s,a)=>s+a.precio*a.stock,0);
+  return (
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+        <Kpi icon="🏪" label="Ingredientes" value={alm.length} color={BLUE}/>
+        <Kpi icon="🧪" label="Sub-Recetas" value={subs.length} color={PUR}/>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <Kpi icon="🍽" label="Platillos" value={recs.length} color={ACC}/>
+        <Kpi icon="⚠" label="Alertas" value={al} color={al>0?RED:GREEN}/>
+      </div>
+      <Box style={{marginBottom:16}}><p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>💰 Valor en Almacen</p><p style={{color:GREEN,fontSize:22,fontWeight:800}}>{fmt(val)}</p></Box>
+      <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Ranking de Platillos</p>
+      {recs.map(rec=>{
+        const c=recCosto(rec,alm,subs),fc=rec.precio>0?c/rec.precio:0,mg=rec.precio-c;
+        return(
+          <Box key={rec.id} style={{marginBottom:8}}>
+            <Row style={{marginBottom:6}}>
+              <div><p style={{fontWeight:700,fontSize:13,marginBottom:4}}>{rec.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag></div></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fmt(rec.precio)}</p><p style={{color:MUT,fontSize:11}}>Costo: {fmt(c)}</p></div>
+            </Row>
+            <div style={{background:SURF,borderRadius:8,padding:"6px 10px",display:"flex",justifyContent:"space-between"}}>
+              <span style={{fontSize:12,color:MUT}}>FC: <span style={{color:fcC(fc),fontWeight:700}}>{pct(fc)}</span></span>
+              <span style={{fontSize:12,color:MUT}}>Margen: <span style={{color:GREEN,fontWeight:700}}>{fmt(mg)}</span></span>
+            </div>
+          </Box>
+        );
+      })}
+      {al>0&&<div style={{marginTop:16}}><p style={{color:RED,fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Reponer urgente</p>{alm.filter(a=>stSt(a)==="reponer").map(a=><Box key={a.id} bc={RED} style={{marginBottom:6}}><Row><div><p style={{fontWeight:700,fontSize:13}}>{a.nombre}</p><p style={{color:MUT,fontSize:11}}>{a.prov}</p></div><p style={{color:RED,fontWeight:700,fontSize:13}}>Stock: {a.stock} {a.unidad}</p></Row></Box>)}</div>}
+    </div>
+  );
+}
+
+function Almacen({alm,setAlm}){
+  const [q,setQ]=useState("");
+  const [show,setShow]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const [f,setF]=useState({nombre:"",cat:"Carnes",unidad:"kg",precio:"",stock:"",min:"",max:"",prov:""});
+  const [ef,setEf]=useState({nombre:"",cat:"",unidad:"",precio:"",stock:"",min:"",max:"",prov:""});
+  const list=alm.filter(a=>a.nombre.toLowerCase().includes(q.toLowerCase())||a.id.toLowerCase().includes(q.toLowerCase()));
+
+  async function save(){
+    if(!f.nombre||!f.precio)return;
+    setSaving(true);
+    try{
+      const newId="ING"+String(uid()).padStart(3,"0");
+      const obj={id:newId,nombre:f.nombre,cat:f.cat,unidad:f.unidad,precio:+f.precio,stock:+f.stock||0,min:+f.min||0,max:+f.max||0,prov:f.prov,updated:hoy()};
+      await sb("ingredientes",{method:"POST",body:JSON.stringify(obj)});
+      setAlm(prev=>[...prev,obj]);
+      setF({nombre:"",cat:"Carnes",unidad:"kg",precio:"",stock:"",min:"",max:"",prov:""});
+      setShow(false);
+    }catch(e){alert("Error al guardar: "+e.message);}
+    finally{setSaving(false);}
+  }
+
+  function startEdit(a){
+    setEditing(a.id);
+    setEf({nombre:a.nombre,cat:a.cat,unidad:a.unidad,precio:String(a.precio),stock:String(a.stock),min:String(a.min),max:String(a.max),prov:a.prov||""});
+  }
+
+  async function saveEdit(){
+    if(!ef.precio)return;
+    setSaving(true);
+    try{
+      const upd={nombre:ef.nombre,cat:ef.cat,unidad:ef.unidad,precio:+ef.precio,stock:+ef.stock||0,min:+ef.min||0,max:+ef.max||0,prov:ef.prov,updated:hoy()};
+      await sb("ingredientes?id=eq."+editing,{method:"PATCH",body:JSON.stringify(upd)});
+      setAlm(prev=>prev.map(a=>a.id===editing?{...a,...upd}:a));
+      setEditing(null);
+    }catch(e){alert("Error al actualizar: "+e.message);}
+    finally{setSaving(false);}
+  }
+
+  async function deleteIng(id){
+    setSaving(true);
+    try{
+      await sb("ingredientes?id=eq."+id,{method:"DELETE",prefer:"return=minimal"});
+      setAlm(prev=>prev.filter(a=>a.id!==id));
+      setEditing(null);
+    }catch(e){alert("Error al eliminar: "+e.message);}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:12}}><Fld value={q} onChange={setQ} placeholder="Buscar ingrediente..." style={{flex:1}}/><Btn sm onClick={()=>setShow(!show)}>+ Nuevo</Btn></div>
+      {show&&<Box bc={ACC} style={{marginBottom:14}}>
+        <p style={{fontWeight:700,fontSize:13,color:ACC,marginBottom:10}}>+ Nuevo Ingrediente</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <Fld value={f.nombre} onChange={v=>setF({...f,nombre:v})} placeholder="Nombre *"/>
+          <Sel value={f.cat} onChange={v=>setF({...f,cat:v})}>{["Carnes","Mariscos","Verduras","Frutas","Lacteos","Abarrotes","Especias","Bebidas","Otro"].map(c=><option key={c}>{c}</option>)}</Sel>
+          <Fld value={f.precio} onChange={v=>setF({...f,precio:v})} placeholder="Precio *" type="number"/>
+          <Sel value={f.unidad} onChange={v=>setF({...f,unidad:v})}>{["kg","litro","pieza","gramo","ml","caja","bolsa","lata","manojo","docena"].map(u=><option key={u}>{u}</option>)}</Sel>
+          <Fld value={f.stock} onChange={v=>setF({...f,stock:v})} placeholder="Stock" type="number"/>
+          <Fld value={f.prov} onChange={v=>setF({...f,prov:v})} placeholder="Proveedor"/>
+          <Fld value={f.min} onChange={v=>setF({...f,min:v})} placeholder="Stock minimo" type="number"/>
+          <Fld value={f.max} onChange={v=>setF({...f,max:v})} placeholder="Stock maximo" type="number"/>
+        </div>
+        <div style={{display:"flex",gap:8}}><Btn color={GREEN} onClick={save} style={{opacity:saving?0.6:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn outline onClick={()=>setShow(false)}>Cancelar</Btn></div>
+      </Box>}
+
+      <p style={{color:MUT,fontSize:11,marginBottom:8}}>{list.length} ingredientes - Toca uno para editar</p>
+      {list.map(a=>{
+        const st=stSt(a),bc=st==="reponer"?RED:st==="sobre"?YEL:BORD;
+        const isEdit=editing===a.id;
+        return(
+          <Box key={a.id} bc={isEdit?ACC:bc} style={{marginBottom:8}}>
+            {isEdit?(
+              <div>
+                <Row style={{marginBottom:10}}>
+                  <p style={{fontWeight:700,fontSize:13,color:ACC}}>Editando: {a.id}</p>
+                  <Btn sm outline onClick={()=>setEditing(null)}>Cancelar</Btn>
+                </Row>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <Fld value={ef.nombre} onChange={v=>setEf({...ef,nombre:v})} placeholder="Nombre"/>
+                  <Sel value={ef.cat} onChange={v=>setEf({...ef,cat:v})}>{["Carnes","Mariscos","Verduras","Frutas","Lacteos","Abarrotes","Especias","Bebidas","Otro"].map(c=><option key={c}>{c}</option>)}</Sel>
+                  <Fld value={ef.precio} onChange={v=>setEf({...ef,precio:v})} placeholder="Precio *" type="number"/>
+                  <Sel value={ef.unidad} onChange={v=>setEf({...ef,unidad:v})}>{["kg","litro","pieza","gramo","ml","caja","bolsa","lata","manojo","docena"].map(u=><option key={u}>{u}</option>)}</Sel>
+                  <Fld value={ef.stock} onChange={v=>setEf({...ef,stock:v})} placeholder="Stock" type="number"/>
+                  <Fld value={ef.prov} onChange={v=>setEf({...ef,prov:v})} placeholder="Proveedor"/>
+                  <Fld value={ef.min} onChange={v=>setEf({...ef,min:v})} placeholder="Stock minimo" type="number"/>
+                  <Fld value={ef.max} onChange={v=>setEf({...ef,max:v})} placeholder="Stock maximo" type="number"/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn color={GREEN} onClick={saveEdit} style={{flex:2,opacity:saving?0.6:1}}>{saving?"Guardando...":"Guardar cambios"}</Btn>
+                  <Btn color={RED} onClick={()=>deleteIng(a.id)} style={{flex:1,opacity:saving?0.6:1}}>Eliminar</Btn>
+                </div>
+              </div>
+            ):(
+              <div onClick={()=>startEdit(a)} style={{cursor:"pointer"}}>
+                <Row style={{marginBottom:6}}>
+                  <div><p style={{fontWeight:700,fontSize:13,marginBottom:4}}>{a.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(a.cat)}>{a.cat}</Tag><span style={{color:MUT,fontSize:10,alignSelf:"center"}}>{a.id}</span>{a.updated&&<Tag color={ACC}>actualizado</Tag>}</div></div>
+                  <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fmt(a.precio)}</p><p style={{color:MUT,fontSize:11}}>/{a.unidad}</p></div>
+                </Row>
+                <Row style={{borderTop:"1px solid "+SURF,paddingTop:6}}>
+                  <span style={{color:MUT,fontSize:11}}>Stock: <span style={{color:st==="reponer"?RED:st==="sobre"?YEL:GREEN,fontWeight:700}}>{a.stock} {a.unidad}</span></span>
+                  <span style={{color:MUT,fontSize:11}}>{a.prov}</span>
+                </Row>
+              </div>
+            )}
+          </Box>
+        );
+      })}
+    </div>
+  );
+}
+
+function SubRecetas({subs,alm}){
+  return(
+    <div>
+      {subs.map(sub=>{
+        const tot=sub.ings.reduce((s,l)=>{const i=alm.find(a=>a.id===l.id);return s+(i?i.precio*l.q:0);},0);
+        const cxu=sub.rend>0?tot/sub.rend:0;
+        return(
+          <Box key={sub.id} style={{marginBottom:12}}>
+            <Row style={{marginBottom:8}}>
+              <div><p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{sub.nombre}</p><div style={{display:"flex",gap:6}}><Tag color={PUR}>{sub.tipo}</Tag><span style={{color:MUT,fontSize:10,alignSelf:"center"}}>{sub.id}</span></div></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15,color:PUR}}>{fmt(cxu)}</p><p style={{color:MUT,fontSize:11}}>/{sub.u}</p></div>
+            </Row>
+            <div style={{background:SURF,borderRadius:8,padding:10}}>
+              <p style={{color:MUT,fontSize:11,marginBottom:6,fontWeight:600}}>Rinde {sub.rend}{sub.u}</p>
+              {sub.ings.map((l,i)=>{const ing=alm.find(a=>a.id===l.id);return <Row key={i} style={{padding:"3px 0",borderBottom:"1px solid "+BORD}}><span style={{fontSize:12}}>{ing?ing.nombre:l.id} <span style={{color:MUT}}>{l.q} {ing?ing.unidad:""}</span></span><span style={{fontSize:12,color:ACC}}>{fmt(ing?ing.precio*l.q:0)}</span></Row>;})}
+              <Row style={{marginTop:6}}><span style={{fontSize:12,color:MUT,fontWeight:600}}>Total lote</span><span style={{fontSize:13,fontWeight:700}}>{fmt(tot)}</span></Row>
+            </div>
+          </Box>
+        );
+      })}
+    </div>
+  );
+}
+
+function DetalleReceta({rec,alm,subs,onClose}){
+  const costo=recCosto(rec,alm,subs);
+  const fc=rec.precio>0?costo/rec.precio:0;
+  const mg=rec.precio-costo;
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:BG,zIndex:200,overflowY:"auto",paddingBottom:40}}>
+      <div style={{background:CARD,borderBottom:"1px solid "+BORD,padding:"14px 16px",position:"sticky",top:0,zIndex:201}}>
+        <Row>
+          <button onClick={onClose} style={{background:"none",border:"none",color:ACC,fontWeight:700,fontSize:14,cursor:"pointer",padding:"4px 0"}}>&larr; Volver</button>
+          <Tag color={catC(rec.cat)}>{rec.cat}</Tag>
+        </Row>
+        <p style={{fontWeight:800,fontSize:20,marginTop:8}}>{rec.nombre}</p>
+        <p style={{color:MUT,fontSize:12}}>{rec.id}</p>
+      </div>
+      <div style={{padding:16}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+          {[["Precio Venta",fmt(rec.precio),TEXT],["Costo Total",fmt(costo),ACC],["Food Cost",pct(fc),fcC(fc)],["Margen Bruto",fmt(mg),GREEN],["Margen %",pct(rec.precio>0?mg/rec.precio:0),GREEN],["Clasificacion",fcL(fc),fcC(fc)]].map(item=>(
+            <div key={item[0]} style={{background:CARD,border:"1px solid "+BORD,borderRadius:10,padding:12}}>
+              <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{item[0]}</p>
+              <p style={{color:item[2],fontWeight:800,fontSize:16}}>{item[1]}</p>
+            </div>
+          ))}
+        </div>
+        <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Desglose de Ingredientes</p>
+        {rec.lineas.map((l,i)=>{
+          const isI=l.t==="ING",ing=isI?alm.find(a=>a.id===l.i):null,sub=!isI?subs.find(s=>s.id===l.i):null;
+          const nm=isI?(ing?ing.nombre:l.i):(sub?sub.nombre:l.i);
+          const cu=isI?(ing?ing.precio:0):subCosto(sub||{ings:[],rend:1},alm);
+          const lc=cu*l.q,pp=costo>0?lc/costo:0;
+          const stockAct=isI&&ing?ing.stock:null,stockUnid=isI&&ing?ing.unidad:"";
+          const porcPosibles=isI&&ing&&l.q>0?Math.floor(ing.stock/l.q):null;
+          const stockOk=isI&&ing?ing.stock>ing.min:true;
+          return(
+            <div key={i} style={{background:CARD,border:"1px solid "+(isI&&ing&&!stockOk?RED:BORD),borderRadius:10,padding:12,marginBottom:8}}>
+              <Row style={{marginBottom:6}}>
+                <div style={{display:"flex",gap:6,alignItems:"center",flex:1,minWidth:0}}>
+                  <span style={{fontSize:9,color:isI?ACC:PUR,background:isI?ACC+"22":PUR+"22",padding:"2px 6px",borderRadius:3,fontWeight:700,flexShrink:0}}>{l.t}</span>
+                  <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nm}</span>
+                </div>
+                <span style={{fontWeight:800,fontSize:14,color:ACC,flexShrink:0,marginLeft:8}}>{fmt(lc)}</span>
+              </Row>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                <div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Cantidad usada</p><p style={{fontWeight:700,fontSize:13}}>{l.q} {isI?(ing?ing.unidad:""):(sub?sub.u:"")}</p></div>
+                <div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Costo unitario</p><p style={{fontWeight:700,fontSize:13}}>{fmt(cu)}</p></div>
+                {stockAct!==null&&<div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>En inventario</p><p style={{fontWeight:700,fontSize:13,color:stockOk?GREEN:RED}}>{stockAct} {stockUnid}</p></div>}
+                {porcPosibles!==null&&<div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Porciones posibles</p><p style={{fontWeight:700,fontSize:13,color:porcPosibles<3?RED:porcPosibles<8?YEL:GREEN}}>{porcPosibles} porciones</p></div>}
+                <div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>% del costo</p><p style={{fontWeight:700,fontSize:13}}>{pct(pp)}</p></div>
+              </div>
+              {isI&&ing&&!stockOk&&<div style={{marginTop:6,background:RED+"22",borderRadius:6,padding:"4px 8px"}}><span style={{color:RED,fontSize:11,fontWeight:600}}>Stock bajo - reponer {ing.nombre}</span></div>}
+            </div>
+          );
+        })}
+        <div style={{background:CARD,border:"1px solid "+GREEN,borderRadius:10,padding:14,marginTop:8}}>
+          <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:10}}>Resumen de Rentabilidad</p>
+          <Row style={{marginBottom:6}}><span style={{color:MUT,fontSize:13}}>Precio de venta</span><span style={{fontWeight:700,fontSize:15}}>{fmt(rec.precio)}</span></Row>
+          <Row style={{marginBottom:6}}><span style={{color:MUT,fontSize:13}}>Costo ingredientes</span><span style={{fontWeight:700,fontSize:15,color:ACC}}>- {fmt(costo)}</span></Row>
+          <div style={{borderTop:"1px solid "+BORD,paddingTop:8,marginTop:4}}><Row><span style={{fontWeight:700,fontSize:14}}>Utilidad bruta</span><span style={{fontWeight:800,fontSize:18,color:GREEN}}>{fmt(mg)}</span></Row></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Recetas({recs,alm,subs}){
+  const [q,setQ]=useState(""),[cat,setCat]=useState("Todas");
+  const [detalle,setDetalle]=useState(null);
+  const list=recs.filter(r=>(cat==="Todas"||r.cat===cat)&&r.nombre.toLowerCase().includes(q.toLowerCase()));
+  if(detalle)return <DetalleReceta rec={detalle} alm={alm} subs={subs} onClose={()=>setDetalle(null)}/>;
+  return(
+    <div>
+      <Fld value={q} onChange={setQ} placeholder="Buscar platillo..." style={{marginBottom:10}}/>
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        {["Todas","Entradas","Pastas","Principales"].map(c=><button key={c} onClick={()=>setCat(c)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:cat===c?ACC:SURF,color:cat===c?"#fff":MUT,fontWeight:cat===c?700:500,fontSize:12,cursor:"pointer"}}>{c}</button>)}
+      </div>
+      <p style={{color:MUT,fontSize:11,marginBottom:10}}>Toca una receta para ver el desglose completo</p>
+      {list.map(rec=>{
+        const c=recCosto(rec,alm,subs),fc=rec.precio>0?c/rec.precio:0;
+        const stockBajo=rec.lineas.some(l=>{if(l.t!=="ING")return false;const ing=alm.find(a=>a.id===l.i);return ing&&ing.stock<=ing.min;});
+        return(
+          <Box key={rec.id} bc={stockBajo?RED:BORD} style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setDetalle(rec)}>
+            <Row style={{marginBottom:8}}>
+              <div><p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{rec.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag>{stockBajo&&<Tag color={RED}>Stock bajo</Tag>}</div></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fmt(rec.precio)}</p><p style={{color:fcC(fc),fontSize:12,fontWeight:700}}>FC {pct(fc)}</p><p style={{color:GREEN,fontSize:11}}>Margen {fmt(rec.precio-c)}</p></div>
+            </Row>
+            <Row style={{borderTop:"1px solid "+SURF,paddingTop:6}}><span style={{color:MUT,fontSize:11}}>Costo: {fmt(c)}</span><span style={{color:MUT,fontSize:12,fontWeight:600}}>Ver detalle &rarr;</span></Row>
+          </Box>
+        );
+      })}
+    </div>
+  );
+}
+
+function PorPlatillo({recs,alm,subs}){
+  const [sel,setSel]=useState(recs.length>0?recs[0].id:"");
+  const rec=recs.find(r=>r.id===sel);
+  const c=rec?recCosto(rec,alm,subs):0,fc=rec&&rec.precio>0?c/rec.precio:0,mg=rec?rec.precio-c:0;
+  return(
+    <div>
+      <Box bc={ACC} style={{marginBottom:14}}>
+        <p style={{color:MUT,fontSize:11,marginBottom:6}}>Selecciona platillo</p>
+        <Sel value={sel} onChange={setSel} style={{fontWeight:700,fontSize:14,borderColor:ACC}}>
+          {recs.map(r=><option key={r.id} value={r.id}>{r.id} - {r.nombre}</option>)}
+        </Sel>
+      </Box>
+      {rec&&<div>
+        <Box bc={fcC(fc)} style={{marginBottom:12}}>
+          <p style={{fontWeight:800,fontSize:17,marginBottom:4}}>{rec.nombre}</p>
+          <Tag color={catC(rec.cat)}>{rec.cat}</Tag>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:12}}>
+            {[["Precio Venta",fmt(rec.precio),TEXT],["Costo Total",fmt(c),ACC],["Food Cost",pct(fc),fcC(fc)],["Margen Bruto",fmt(mg),GREEN],["Margen %",pct(rec.precio>0?mg/rec.precio:0),GREEN],["Clasificacion",fcL(fc),fcC(fc)]].map(item=>(
+              <div key={item[0]} style={{background:SURF,borderRadius:8,padding:10}}><p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>{item[0]}</p><p style={{color:item[2],fontWeight:800,fontSize:15}}>{item[1]}</p></div>
+            ))}
+          </div>
+        </Box>
+        <Box>
+          <p style={{fontWeight:700,fontSize:11,color:MUT,textTransform:"uppercase",marginBottom:10}}>Desglose Completo</p>
+          {rec.lineas.map((l,i)=>{
+            const isI=l.t==="ING",ing=isI?alm.find(a=>a.id===l.i):null,sub=!isI?subs.find(s=>s.id===l.i):null;
+            const nm=isI?(ing?ing.nombre:l.i):(sub?sub.nombre:l.i);
+            const cu=isI?(ing?ing.precio:0):subCosto(sub||{ings:[],rend:1},alm);
+            const lc=cu*l.q,pp=c>0?lc/c:0;
+            return(
+              <div key={i} style={{padding:"8px 0",borderBottom:"1px solid "+BORD}}>
+                <Row style={{marginBottom:4}}>
+                  <div style={{display:"flex",gap:6,alignItems:"center",flex:1,minWidth:0}}><span style={{fontSize:9,color:isI?ACC:PUR,background:isI?ACC+"22":PUR+"22",padding:"1px 6px",borderRadius:3,fontWeight:700,flexShrink:0}}>{l.t}</span><span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nm}</span></div>
+                  <span style={{fontSize:13,fontWeight:700,color:ACC,flexShrink:0,marginLeft:8}}>{fmt(lc)}</span>
+                </Row>
+                <Row><span style={{color:MUT,fontSize:11}}>{l.q} {isI?(ing?ing.unidad:""):(sub?sub.u:"")} x {fmt(cu)}</span><span style={{color:MUT,fontSize:11}}>{pct(pp)}</span></Row>
+              </div>
+            );
+          })}
+        </Box>
+      </div>}
+    </div>
+  );
+}
+
+function Movimientos({movs,setMovs,alm}){
+  const [show,setShow]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [f,setF]=useState({ingId:"",tipo:"ENTRADA",qty:"",resp:"",obs:""});
+
+  async function save(){
+    if(!f.ingId||!f.qty)return;
+    setSaving(true);
+    try{
+      const q=f.tipo==="SALIDA"?-Math.abs(+f.qty):+f.qty;
+      const obj={fecha:hoy(),ing_id:f.ingId,tipo:f.tipo,qty:q,responsable:f.resp,obs:f.obs};
+      const res=await sb("movimientos",{method:"POST",body:JSON.stringify(obj)});
+      const saved=Array.isArray(res)?res[0]:res;
+      setMovs(prev=>[...prev,{id:saved.id,fecha:saved.fecha,ingId:saved.ing_id,tipo:saved.tipo,qty:saved.qty,resp:saved.responsable,obs:saved.obs}]);
+      // Actualizar stock en Supabase
+      const ing=alm.find(a=>a.id===f.ingId);
+      if(ing){
+        const newStock=Math.max(0,Number(ing.stock)+q);
+        await sb("ingredientes?id=eq."+f.ingId,{method:"PATCH",body:JSON.stringify({stock:newStock})});
+      }
+      setF({ingId:"",tipo:"ENTRADA",qty:"",resp:"",obs:""});
+      setShow(false);
+    }catch(e){alert("Error al guardar movimiento: "+e.message);}
+    finally{setSaving(false);}
+  }
+
+  return(
+    <div>
+      <Btn onClick={()=>setShow(!show)} style={{width:"100%",marginBottom:14}}>+ Registrar Movimiento</Btn>
+      {show&&<Box bc={ACC} style={{marginBottom:14}}>
+        <p style={{fontWeight:700,fontSize:13,color:ACC,marginBottom:10}}>Nuevo Movimiento</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <Sel value={f.ingId} onChange={v=>setF({...f,ingId:v})} style={{gridColumn:"1 / -1"}}><option value="">Selecciona ingrediente...</option>{alm.map(a=><option key={a.id} value={a.id}>{a.id} - {a.nombre}</option>)}</Sel>
+          <Sel value={f.tipo} onChange={v=>setF({...f,tipo:v})}><option>ENTRADA</option><option>SALIDA</option><option>MERMA</option><option>AJUSTE</option></Sel>
+          <Fld value={f.qty} onChange={v=>setF({...f,qty:v})} placeholder="Cantidad" type="number"/>
+          <Fld value={f.resp} onChange={v=>setF({...f,resp:v})} placeholder="Responsable"/>
+          <Fld value={f.obs} onChange={v=>setF({...f,obs:v})} placeholder="Observaciones" style={{gridColumn:"1 / -1"}}/>
+        </div>
+        <div style={{display:"flex",gap:8}}><Btn color={GREEN} onClick={save} style={{opacity:saving?0.6:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn outline onClick={()=>setShow(false)}>Cancelar</Btn></div>
+      </Box>}
+      {[...movs].reverse().map(m=>{
+        const ing=alm.find(a=>a.id===m.ingId),en=m.tipo==="ENTRADA";
+        return(
+          <Box key={m.id} bc={en?GREEN:m.tipo==="MERMA"?YEL:RED} style={{marginBottom:8}}>
+            <Row style={{marginBottom:4}}>
+              <div><div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}><Tag color={en?GREEN:m.tipo==="MERMA"?YEL:RED}>{m.tipo}</Tag><span style={{fontWeight:700,fontSize:13}}>{ing?ing.nombre:m.ingId}</span></div><p style={{color:MUT,fontSize:11}}>{m.fecha} - {m.resp}</p></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:14,color:en?GREEN:RED}}>{en?"+":""}{m.qty} {ing?ing.unidad:""}</p><p style={{color:MUT,fontSize:11}}>{fmt(Math.abs(m.qty)*(ing?ing.precio:0))}</p></div>
+            </Row>
+            {m.obs&&<p style={{color:MUT,fontSize:11}}>{m.obs}</p>}
+          </Box>
+        );
+      })}
+    </div>
+  );
+}
+
+const PROMPT_F="Eres experto en facturas de restaurante. Analiza la imagen y extrae todos los productos. Responde SOLO con JSON valido sin texto extra. Estructura: {\"proveedor\":\"string\",\"fecha\":\"string o null\",\"productos\":[{\"nombre\":\"string\",\"cantidad\":1,\"unidad\":\"kg\",\"precio_unitario\":0,\"precio_total\":0,\"categoria\":\"Carnes\"}],\"total_factura\":0}";
+
+function Scanner({alm,setAlm}){
+  const [img,setImg]=useState(null),[b64,setB64]=useState(null),[loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null),[pending,setPending]=useState([]),[error,setError]=useState(null),[applied,setApplied]=useState([]);
+  const [mimeType,setMimeType]=useState("image/jpeg");
+  const fRef=useRef(),cRef=useRef();
+
+  function toB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
+
+  async function handleFile(file){
+    if(!file)return;
+    setImg(URL.createObjectURL(file));
+    setResult(null);setError(null);setPending([]);
+    setMimeType(file.type||"image/jpeg");
+    setB64(await toB64(file));
+  }
+
+  async function analyze(){
+    if(!b64)return;
+    setLoading(true);setError(null);
+    try{
+      // Llama al backend Railway, no directo a Anthropic
+      const resp=await fetch(RAILWAY_URL+"/scan-factura",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({image_base64:b64,media_type:mimeType})
+      });
+      if(!resp.ok)throw new Error("Error "+resp.status+" del servidor");
+      const parsed=await resp.json();
+      if(parsed.error)throw new Error(parsed.error);
+      const upd=parsed.productos.map(p=>{
+        const m=alm.find(a=>a.nombre.toLowerCase().split(" ")[0]===p.nombre.toLowerCase().split(" ")[0]);
+        return{...p,matched:m||null,action:m?(m.precio!==p.precio_unitario?"update":"same"):"new",tempId:"ING"+String(uid()).padStart(3,"0"),selected:true};
+      });
+      setResult(parsed);setPending(upd);
+    }catch(e){setError("No se pudo analizar: "+e.message);}
+    finally{setLoading(false);}
+  }
+
+  async function apply(){
+    const ta=pending.filter(u=>u.selected&&u.action!=="same"),log=[];
+    for(const x of ta){
+      try{
+        if(x.action==="update"&&x.matched){
+          await sb("ingredientes?id=eq."+x.matched.id,{method:"PATCH",body:JSON.stringify({precio:x.precio_unitario,prov:result.proveedor,updated:hoy()})});
+          setAlm(prev=>prev.map(a=>a.id===x.matched.id?{...a,precio:x.precio_unitario,prov:result.proveedor,updated:hoy()}:a));
+          log.push({t:"u",n:x.matched.nombre,d:x.matched.precio,a:x.precio_unitario});
+        }else if(x.action==="new"){
+          const obj={id:x.tempId,nombre:x.nombre,cat:x.categoria||"Otro",unidad:x.unidad,precio:x.precio_unitario,stock:x.cantidad,min:0,max:x.cantidad*3,prov:result.proveedor,updated:hoy()};
+          await sb("ingredientes",{method:"POST",body:JSON.stringify(obj)});
+          setAlm(prev=>[...prev,obj]);
+          log.push({t:"n",n:x.nombre,p:x.precio_unitario});
+        }
+      }catch(e){console.error("Error aplicando cambio:",e);}
+    }
+    setApplied(log);setPending([]);setResult(null);setImg(null);
+  }
+
+  return(
+    <div>
+      {applied.length>0&&<Box bc={GREEN} style={{marginBottom:14}}><p style={{color:GREEN,fontWeight:700,fontSize:13,marginBottom:6}}>{applied.length} cambios aplicados</p>{applied.map((a,i)=><p key={i} style={{color:"#86EFAC",fontSize:12,marginTop:2}}>{a.t==="u"?"Actualizado "+a.n+": $"+a.d+" -> $"+a.a:"Agregado "+a.n+" ($"+a.p+")"}</p>)}</Box>}
+      {!img&&<div>
+        <div onClick={()=>fRef.current.click()} style={{border:"2px dashed "+BORD,borderRadius:14,padding:"36px 20px",textAlign:"center",cursor:"pointer",background:CARD,marginBottom:10}}>
+          <p style={{fontSize:40,marginBottom:8}}>📄</p>
+          <p style={{fontWeight:700,fontSize:15,marginBottom:4}}>Subir imagen de factura</p>
+          <p style={{color:MUT,fontSize:12}}>Ticket, factura o nota de entrega</p>
+        </div>
+        <input ref={fRef} type="file" accept="image/*" onChange={e=>handleFile(e.target.files[0])} style={{display:"none"}}/>
+        <Btn onClick={()=>cRef.current.click()} style={{width:"100%",padding:14,fontSize:15}}>Tomar foto con camara</Btn>
+        <input ref={cRef} type="file" accept="image/*" capture="environment" onChange={e=>handleFile(e.target.files[0])} style={{display:"none"}}/>
+      </div>}
+      {img&&!loading&&!result&&<div>
+        <div style={{borderRadius:12,overflow:"hidden",marginBottom:12,border:"1px solid "+BORD}}><img src={img} alt="factura" style={{width:"100%",maxHeight:300,objectFit:"contain",background:"#000"}}/></div>
+        <div style={{display:"flex",gap:8}}><Btn outline onClick={()=>{setImg(null);setB64(null);}} style={{flex:1}}>Cambiar</Btn><Btn onClick={analyze} style={{flex:2}}>Analizar con IA</Btn></div>
+      </div>}
+      {loading&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:32}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid "+BORD,borderTop:"3px solid "+ACC,animation:"spin 0.7s linear infinite"}}/><p style={{color:MUT,fontSize:13}}>Analizando con IA...</p></div>}
+      {error&&<Box bc={RED}><p style={{color:RED,fontSize:13}}>{error}</p></Box>}
+      {result&&pending.length>0&&<div>
+        <Box style={{marginBottom:12}}>
+          <Row style={{marginBottom:6}}><p style={{fontWeight:700,fontSize:14}}>{result.proveedor}</p>{result.fecha&&<Tag color={BLUE}>{result.fecha}</Tag>}</Row>
+          <div style={{display:"flex",gap:14}}><div><p style={{color:MUT,fontSize:10}}>Productos</p><p style={{fontWeight:700,fontSize:18,color:ACC}}>{result.productos.length}</p></div>{result.total_factura?<div><p style={{color:MUT,fontSize:10}}>Total</p><p style={{fontWeight:700,fontSize:18,color:GREEN}}>{fmt(result.total_factura)}</p></div>:null}</div>
+        </Box>
+        {pending.map((u,i)=>(
+          <Box key={i} bc={u.action==="new"?GREEN:u.action==="update"?ACC:BORD} style={{marginBottom:8,opacity:u.action==="same"?0.5:1,cursor:u.action!=="same"?"pointer":"default"}} onClick={()=>{if(u.action!=="same")setPending(p=>p.map((x,j)=>j===i?{...x,selected:!x.selected}:x));}}>
+            <Row style={{marginBottom:u.action!=="same"?6:0}}>
+              <div style={{display:"flex",gap:8,alignItems:"flex-start",flex:1}}>
+                {u.action!=="same"&&<div style={{width:18,height:18,borderRadius:4,background:u.selected?ACC:SURF,border:"2px solid "+(u.selected?ACC:MUT),display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0,marginTop:2}}>{u.selected?"v":""}</div>}
+                <div><p style={{fontWeight:700,fontSize:13,marginBottom:4}}>{u.nombre}</p><Tag color={catC(u.categoria||"Otro")}>{u.categoria}</Tag></div>
+              </div>
+              <div style={{textAlign:"right",marginLeft:8}}><p style={{fontWeight:800,fontSize:14,color:u.action==="update"?ACC:TEXT}}>{fmt(u.precio_unitario)}</p><p style={{color:MUT,fontSize:11}}>/{u.unidad}</p></div>
+            </Row>
+            {u.action==="update"&&u.matched&&<div style={{background:SURF,borderRadius:8,padding:"6px 10px",display:"flex",justifyContent:"space-between"}}><span style={{color:MUT,fontSize:11}}>Actual: <span style={{color:TEXT}}>${u.matched.precio}</span></span><span style={{color:u.precio_unitario>u.matched.precio?RED:GREEN,fontSize:11,fontWeight:700}}>{u.precio_unitario>u.matched.precio?"Sube":"Baja"} {Math.abs(((u.precio_unitario-u.matched.precio)/u.matched.precio)*100).toFixed(1)}%</span></div>}
+            {u.action==="new"&&<div style={{background:GREEN+"22",borderRadius:8,padding:"5px 10px"}}><span style={{color:GREEN,fontSize:11}}>Se agregara al almacen</span></div>}
+          </Box>
+        ))}
+        <div style={{position:"sticky",bottom:16,marginTop:14}}>
+          <Btn color={GREEN} onClick={apply} style={{width:"100%",padding:16,fontSize:15}}>Aplicar {pending.filter(u=>u.selected&&u.action!=="same").length} cambios al almacen</Btn>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+const TABS=[{id:"dashboard",icon:"📊",label:"Dashboard"},{id:"almacen",icon:"🏪",label:"Almacen"},{id:"subs",icon:"🧪",label:"Sub-Rec."},{id:"recetas",icon:"📋",label:"Recetas"},{id:"platillo",icon:"🍽",label:"Platillo"},{id:"scanner",icon:"📷",label:"Facturas"},{id:"movs",icon:"📦",label:"Movim."}];
+
+// Convierte fila DB → formato interno de la app
+function mapAlm(row){return{id:row.id,nombre:row.nombre,cat:row.cat,unidad:row.unidad,precio:Number(row.precio),stock:Number(row.stock),min:Number(row.min),max:Number(row.max),prov:row.prov||"",updated:row.updated||null};}
+function mapSub(row,items){return{id:row.id,nombre:row.nombre,tipo:row.tipo,rend:Number(row.rend),u:row.u,ings:items.filter(i=>i.sub_id===row.id).map(i=>({id:i.ing_id,q:Number(i.cantidad)})) };}
+function mapRec(row,lineas){return{id:row.id,nombre:row.nombre,cat:row.cat,precio:Number(row.precio),lineas:lineas.filter(l=>l.rec_id===row.id).map(l=>({t:l.tipo,i:l.ref_id,q:Number(l.cantidad)}))};}
+function mapMov(row){return{id:row.id,fecha:row.fecha,ingId:row.ing_id,tipo:row.tipo,qty:Number(row.qty),resp:row.responsable||"",obs:row.obs||""};}
+
+function App(){
+  const [tab,setTab]=useState("dashboard");
+  const [alm,setAlm]=useState([]);
+  const [subs,setSubs]=useState([]);
+  const [recs,setRecs]=useState([]);
+  const [movs,setMovs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState(null);
+
+  useEffect(()=>{
+    async function load(){
+      try{
+        const [almRows,subRows,subItems,recRows,recLineas,movRows]=await Promise.all([
+          sb("ingredientes?select=*&order=id"),
+          sb("sub_recetas?select=*&order=id"),
+          sb("sub_receta_items?select=*"),
+          sb("recetas?select=*&order=id"),
+          sb("receta_lineas?select=*"),
+          sb("movimientos?select=*&order=created_at"),
+        ]);
+        setAlm((almRows||[]).map(mapAlm));
+        setSubs((subRows||[]).map(r=>mapSub(r,subItems||[])));
+        setRecs((recRows||[]).map(r=>mapRec(r,recLineas||[])));
+        setMovs((movRows||[]).map(mapMov));
+      }catch(e){setError("Error cargando datos: "+e.message);}
+      finally{setLoading(false);}
+    }
+    load();
+  },[]);
+
+  const al=alm.filter(a=>stSt(a)==="reponer").length;
+
+  if(loading)return(
+    <div style={{minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{width:44,height:44,borderRadius:"50%",border:"3px solid #1A2035",borderTop:"3px solid #F97316",animation:"spin 0.7s linear infinite"}}/>
+      <p style={{color:"#475569",fontSize:13}}>Cargando sistema...</p>
+    </div>
+  );
+
+  if(error)return(
+    <div style={{minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:24}}>
+      <p style={{fontSize:32}}>⚠️</p>
+      <p style={{color:"#EF4444",fontWeight:700,textAlign:"center"}}>{error}</p>
+      <button onClick={()=>window.location.reload()} style={{padding:"10px 24px",borderRadius:8,background:"#F97316",color:"#fff",border:"none",fontWeight:700,cursor:"pointer"}}>Reintentar</button>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100vh",background:BG,color:TEXT,paddingBottom:80}}>
+      <div style={{background:CARD,borderBottom:"1px solid "+BORD,padding:"14px 16px",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:34,height:34,borderRadius:9,background:ACC,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🍽</div>
+          <div><h1 style={{fontSize:16,fontWeight:800}}>Sistema Restaurante</h1><p style={{fontSize:10,color:MUT}}>Inventario - Recetas - Facturas</p></div>
+          {al>0&&<div style={{marginLeft:"auto",background:RED+"22",border:"1px solid "+RED,borderRadius:20,padding:"3px 10px",fontSize:11,color:RED,fontWeight:700}}>⚠ {al} alertas</div>}
+        </div>
+      </div>
+      <div style={{padding:"16px 16px 0"}} className="fade" key={tab}>
+        {tab==="dashboard"&&<Dashboard alm={alm} subs={subs} recs={recs}/>}
+        {tab==="almacen"&&<Almacen alm={alm} setAlm={setAlm}/>}
+        {tab==="subs"&&<SubRecetas subs={subs} alm={alm}/>}
+        {tab==="recetas"&&<Recetas recs={recs} alm={alm} subs={subs}/>}
+        {tab==="platillo"&&<PorPlatillo recs={recs} alm={alm} subs={subs}/>}
+        {tab==="scanner"&&<Scanner alm={alm} setAlm={setAlm}/>}
+        {tab==="movs"&&<Movimientos movs={movs} setMovs={setMovs} alm={alm}/>}
+      </div>
+      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:CARD,borderTop:"1px solid "+BORD,display:"flex",padding:"6px 4px 6px",zIndex:50}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 2px",color:tab===t.id?ACC:MUT}}>
+            <span style={{fontSize:17}}>{t.icon}</span>
+            <span style={{fontSize:9,fontWeight:tab===t.id?700:500}}>{t.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
