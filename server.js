@@ -154,6 +154,38 @@ app.post("/scan-factura-file", upload.single("imagen"), async (req, res) => {
   }
 });
 
+// Chat con el asistente AI
+app.post("/chat", async (req, res) => {
+  const { system, messages } = req.body;
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: "Se requiere messages[]" });
+  }
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1000,
+        system: system || "Eres el asistente del restaurante Galea. Responde en español, de forma concisa.",
+        messages: messages.filter(m => m.role && m.content),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(502).json({ error: "Error Anthropic", detail: data });
+    }
+    const content = data.content.map(b => b.text || "").join("").trim();
+    res.json({ content });
+  } catch (err) {
+    res.status(500).json({ error: "Error interno", detail: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Restaurante backend corriendo en puerto", PORT);
