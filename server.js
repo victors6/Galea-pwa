@@ -143,7 +143,7 @@ app.post('/corte', uploadMulti.array('archivos', 10), async (req, res) => {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
-        system: 'Eres el sistema de ventas de Iddis Bakery Mexico. Lees cortes de caja con precision. Si hay multiples archivos, consolida la informacion de todos.',
+        system: 'Eres el analista financiero de Iddis Bakery Mexico. Lees cortes de caja (PDF, foto de ticket, resumen impreso) y produces analisis financieros completos. Si hay multiples archivos, consolida todo. Responde en espanol sin asteriscos.',
         messages: [{ role: 'user', content }]
       })
     });
