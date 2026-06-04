@@ -11,20 +11,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { height: 100%; }
-  body { background: #0F0F0F; color: #F0F0F0; font-family: -apple-system, 'Segoe UI', sans-serif; overflow-x: hidden; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes slideup { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-  .fade { animation: fadein 0.2s ease forwards; }
-  select, input, button { -webkit-appearance: none; appearance: none; font-family: inherit; }
-  input { outline: none; }
-  select { outline: none; }
-  ::-webkit-scrollbar { width: 3px; }
-  ::-webkit-scrollbar-track { background: #0F0F0F; }
-  ::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 2px; }
-  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+body { background: #07080F; color: #F1F5F9; font-family: -apple-system, 'Segoe UI', sans-serif; overflow-x: hidden; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.fade { animation: fadein 0.2s ease forwards; }
+select, input, button { -webkit-appearance: none; appearance: none; font-family: inherit; }
+input { outline: none; } select { outline: none; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #07080F; }
+::-webkit-scrollbar-thumb { background: #151929; border-radius: 2px; }
 </style>
 </head>
 <body>
@@ -32,20 +29,28 @@
 <script type="text/babel">
 const { useState, useRef, useEffect } = React;
 
-// ── Paleta Galea: blanco y negro ────────────────────────────
-const BG    = "#0F0F0F";
-const CARD  = "#1A1A1A";
-const BORD  = "#2E2E2E";
-const SURF  = "#242424";
-const ACC   = "#FFFFFF";
-const BLUE  = "#93C5FD";
-const GREEN = "#6EE7B7";
-const RED   = "#FCA5A5";
-const YEL   = "#FCD34D";
-const PUR   = "#C4B5FD";
-const TEXT  = "#FFFFFF";
-const MUT   = "#9CA3AF";
+// Paleta base (igual que el original)
+const BG="#07080F", CARD="#0E1120", BORD="#1A2035", SURF="#151929";
+const ACC="#F97316", BLUE="#3B82F6", GREEN="#22C55E", RED="#EF4444";
+const YEL="#EAB308", PUR="#A855F7", TEXT="#F1F5F9", MUT="#475569";
 const MODEL = "claude-haiku-4-5-20251001";
+
+// Areas del restaurante
+const AREAS = [
+  {id:"cocina",  nombre:"Cocina",  icon:"🍽",  color:"#F97316", desc:"Platillos, entradas y principales"},
+  {id:"vinos",   nombre:"Vinos",   icon:"🍷",  color:"#7C3AED", desc:"Carta de vinos y maridajes"},
+  {id:"barra",   nombre:"Barra",   icon:"🍸",  color:"#0EA5E9", desc:"Cocteles, bebidas y licores"},
+  {id:"postres", nombre:"Postres", icon:"🍰",  color:"#EC4899", desc:"Postres y reposteria"},
+];
+
+// Permisos por rol
+const PERMISOS = {
+  admin:   ["home","almacen","subs","recetas","scanner","movs","ai","usuarios"],
+  chef:    ["home","subs","recetas","movs","ai"],
+  compras: ["home","almacen","scanner","movs"],
+  vista:   ["home","recetas"],
+};
+const ROL_COLOR = { admin:"#F1F5F9", chef:"#6EE7B7", compras:"#93C5FD", vista:"#FCD34D" };
 
 const SUPABASE_URL = "https://epgyvdbqinfucajvscns.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwZ3l2ZGJxaW5mdWNhanZzY25zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MzAyMTgsImV4cCI6MjA5NDUwNjIxOH0.7gZGGP3JLDyKz5JJcLpJKfRFWkGeZnT68sonIUQKNeY";
@@ -68,168 +73,459 @@ async function sb(path, opts={}) {
   return txt ? JSON.parse(txt) : null;
 }
 
-let nextId=200;
-function uid(){return ++nextId;}
-function hoy(){return new Date().toLocaleDateString("es-MX");}
-function fmt(n){return "$"+Number(n).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});}
-function pct(n){return (n*100).toFixed(1)+"%";}
-function subCosto(sub,alm){const t=sub.ings.reduce((s,l)=>{const i=alm.find(a=>a.id===l.id);return s+(i?i.precio*l.q:0);},0);return sub.rend>0?t/sub.rend:0;}
-function recCosto(rec,alm,subs){return rec.lineas.reduce((s,l)=>{if(l.t==="ING"){const i=alm.find(a=>a.id===l.i);return s+(i?i.precio*l.q:0);}const sub=subs.find(sr=>sr.id===l.i);return s+(sub?subCosto(sub,alm)*l.q:0);},0);}
-function stSt(a){if(a.stock<=a.min)return"reponer";if(a.stock>=a.max)return"sobre";return"ok";}
-function catC(cat){if(cat==="Carnes")return RED;if(cat==="Lacteos"||cat==="Mariscos")return BLUE;if(cat==="Verduras"||cat==="Frutas")return GREEN;if(cat==="Especias"||cat==="Salsas")return PUR;return YEL;}
-function fcC(fc){return fc<=0.25?"#E0E0E0":fc<=0.35?YEL:RED;}
-function fcL(fc){return fc<=0.25?"Estrella":fc<=0.35?"Rentable":fc<=0.45?"Revisar":"Perdida";}
+let nextId = 300;
+function uid() { return ++nextId; }
+function hoy() { return new Date().toLocaleDateString("es-MX"); }
+function fm(n) { return "$"+Number(n).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function pc(n) { return (n*100).toFixed(1)+"%"; }
+function b64file(f) { return new Promise((ok,er)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(",")[1]);r.onerror=er;r.readAsDataURL(f);}); }
+function stSt(a) { if(a.stock<=a.min)return"rep"; if(a.stock>=a.max)return"sob"; return"ok"; }
+function catC(c) { return c==="Carnes"?RED:c==="Lacteos"||c==="Mariscos"?BLUE:c==="Verduras"||c==="Frutas"?GREEN:c==="Especias"||c==="Salsas"?PUR:YEL; }
+function fcC(f) { return f<=0.25?GREEN:f<=0.35?YEL:RED; }
+function fcL(f) { return f<=0.25?"Estrella":f<=0.35?"Rentable":f<=0.45?"Revisar":"Perdida"; }
+function subCosto(sub,alm) { const t=sub.ings.reduce((s,l)=>{const i=alm.find(a=>a.id===l.id);return s+(i?i.precio*l.q:0);},0);return sub.rend>0?t/sub.rend:0; }
+function recCosto(rec,alm,subs) { return rec.lineas.reduce((s,l)=>{if(l.t==="ING"){const i=alm.find(a=>a.id===l.i);return s+(i?i.precio*l.q:0);}const sub=subs.find(sr=>sr.id===l.i);return s+(sub?subCosto(sub,alm)*l.q:0);},0); }
 
-function Tag({color=BLUE,children}){return <span style={{background:color+"18",color,border:"1px solid "+color+"40",borderRadius:4,padding:"2px 7px",fontSize:10,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;}
-function Box({children,bc=BORD,style={}}){return <div style={{background:CARD,border:"1px solid "+bc,borderRadius:10,padding:14,...style}}>{children}</div>;}
+// Primitivos UI
+function Tag({color=BLUE,children}){return <span style={{background:color+"22",color,border:"1px solid "+color+"55",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;}
+function Box({children,bc=BORD,style={}}){return <div style={{background:CARD,border:"1px solid "+bc,borderRadius:12,padding:14,...style}}>{children}</div>;}
 function Row({children,style={}}){return <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",...style}}>{children}</div>;}
-function Btn({children,onClick,color=ACC,outline=false,sm=false,style={}}){return <button onClick={onClick} style={{padding:sm?"5px 12px":"10px 16px",borderRadius:7,border:outline?"1px solid "+BORD:"none",background:outline?"transparent":color,color:outline?MUT:BG,fontWeight:700,fontSize:sm?12:13,cursor:"pointer",letterSpacing:"0.02em",...style}}>{children}</button>;}
-function Fld({value,onChange,placeholder,type="text",style={}}){return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:SURF,border:"1px solid "+BORD,borderRadius:7,padding:"8px 10px",color:TEXT,fontSize:13,width:"100%",...style}}/>;}
-function Sel({value,onChange,children,style={}}){return <select value={value} onChange={e=>onChange(e.target.value)} style={{background:SURF,border:"1px solid "+BORD,borderRadius:7,padding:"8px 10px",color:TEXT,fontSize:13,width:"100%",...style}}>{children}</select>;}
-function Kpi({icon,label,value,color=TEXT}){return <Box style={{flex:1,minWidth:0}}><p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{icon} {label}</p><p style={{color,fontSize:20,fontWeight:800,letterSpacing:"-0.02em"}}>{value}</p></Box>;}
+function Btn({children,onClick,color=ACC,outline=false,sm=false,style={},disabled=false}){return <button onClick={onClick} disabled={disabled} style={{padding:sm?"6px 12px":"10px 16px",borderRadius:8,border:outline?"1px solid "+BORD:"none",background:outline?"transparent":disabled?"#333":color,color:outline?MUT:"#fff",fontWeight:700,fontSize:sm?12:13,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,...style}}>{children}</button>;}
+function Fld({value,onChange,placeholder,type="text",style={},onKeyDown}){return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown} style={{background:SURF,border:"1px solid "+BORD,borderRadius:8,padding:"8px 10px",color:TEXT,fontSize:13,width:"100%",...style}}/>;}
+function Sel({value,onChange,children,style={}}){return <select value={value} onChange={e=>onChange(e.target.value)} style={{background:SURF,border:"1px solid "+BORD,borderRadius:8,padding:"8px 10px",color:TEXT,fontSize:13,width:"100%",...style}}>{children}</select>;}
+function Ld({color=ACC}){return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:40}}><div style={{width:44,height:44,borderRadius:"50%",border:"3px solid "+BORD,borderTop:"3px solid "+color,animation:"spin 0.7s linear infinite"}}/><p style={{color:MUT,fontSize:13}}>Procesando con IA...</p></div>;}
 
-function Dashboard({alm,subs,recs}){
-  const al=alm.filter(a=>stSt(a)==="reponer").length;
+function Login({onLogin}){
+  const [nombre,setNombre]=useState("");
+  const [pass,setPass]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  async function doLogin(){
+    if(!nombre.trim()||!pass.trim())return;
+    setLoading(true);setError("");
+    try{
+      const rows=await sb(`usuarios?nombre=eq.${encodeURIComponent(nombre.trim())}&activo=eq.true&select=*`);
+      if(!rows||rows.length===0){setError("Usuario no encontrado o inactivo");return;}
+      const user=rows[0];
+      if(user.password!==pass){setError("Contraseña incorrecta");return;}
+      sessionStorage.setItem("galea_user",JSON.stringify({id:user.id,nombre:user.nombre,rol:user.rol}));
+      onLogin({id:user.id,nombre:user.nombre,rol:user.rol});
+    }catch(e){setError("Error al conectar: "+e.message);}
+    finally{setLoading(false);}
+  }
+
+  function onKey(e){if(e.key==="Enter")doLogin();}
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#07080F 0%,#0E1120 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{width:"100%",maxWidth:340}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <div style={{width:72,height:72,borderRadius:"50%",background:"linear-gradient(135deg,#F97316,#DC2626)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:32}}>🍽</div>
+          <h1 style={{fontSize:26,fontWeight:800,letterSpacing:"-0.02em"}}>GALEA</h1>
+          <p style={{color:MUT,fontSize:12,marginTop:4}}>Sistema de gestión</p>
+        </div>
+        <div style={{background:CARD,border:"1px solid "+BORD,borderRadius:16,padding:24}}>
+          <div style={{marginBottom:12}}>
+            <p style={{color:MUT,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Usuario</p>
+            <Fld value={nombre} onChange={setNombre} placeholder="Tu nombre de usuario" onKeyDown={onKey}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <p style={{color:MUT,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Contraseña</p>
+            <Fld value={pass} onChange={setPass} placeholder="••••••••" type="password" onKeyDown={onKey}/>
+          </div>
+          {error&&<div style={{background:RED+"22",border:"1px solid "+RED+"55",borderRadius:8,padding:"8px 12px",marginBottom:12}}>
+            <p style={{color:RED,fontSize:12}}>{error}</p>
+          </div>}
+          <Btn onClick={doLogin} disabled={loading} style={{width:"100%",padding:13,fontSize:14,background:loading?"#333":"linear-gradient(135deg,#F97316,#DC2626)",border:"none"}}>
+            {loading?"Verificando...":"Entrar"}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomeScreen({alm, recs, setArea, user, onLogout}){
+  const al = alm.filter(a=>stSt(a)==="rep").length;
+  const totalVal = alm.reduce((s,a)=>s+a.precio*a.stock,0);
+
+  // Conteo de recetas por area (solo cocina viene de Supabase, el resto estático)
+  const recCount = {
+    cocina:  recs.length,
+    vinos:   96,
+    barra:   36,
+    postres: 11,
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:BG,color:TEXT}}>
+      {/* Header con gradiente */}
+      <div style={{background:"linear-gradient(160deg,#0E1120 0%,#151929 100%)",padding:"24px 16px 20px",borderBottom:"1px solid "+BORD}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+          <div style={{width:48,height:48,borderRadius:14,background:"linear-gradient(135deg,#F97316,#DC2626)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>🍽</div>
+          <div style={{flex:1}}>
+            <h1 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em"}}>GALEA</h1>
+            <p style={{fontSize:11,color:MUT}}>Sistema de Gestión</p>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <Tag color={ROL_COLOR[user.rol]||BLUE}>{user.rol}</Tag>
+            <button onClick={onLogout} style={{background:"none",border:"1px solid "+BORD,borderRadius:6,padding:"4px 10px",color:MUT,fontSize:11,cursor:"pointer"}}>Salir</button>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{background:SURF,borderRadius:12,padding:14}}>
+            <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>Valor Almacen</p>
+            <p style={{color:GREEN,fontSize:18,fontWeight:800}}>{fm(totalVal)}</p>
+          </div>
+          <div style={{background:al>0?RED+"22":SURF,border:"1px solid "+(al>0?RED:BORD),borderRadius:12,padding:14}}>
+            <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>Alertas Stock</p>
+            <p style={{color:al>0?RED:GREEN,fontSize:18,fontWeight:800}}>{al>0?al+" alertas":"Todo OK"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Areas */}
+      <div style={{padding:16}}>
+        <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Areas del Restaurante</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          {AREAS.map(area=>{
+            const n = recCount[area.id]||0;
+            return(
+              <div key={area.id} onClick={()=>setArea(area.id)} style={{background:CARD,border:"1px solid "+BORD,borderRadius:16,padding:16,cursor:"pointer",position:"relative",overflow:"hidden"}}>
+                {/* Watermark icono */}
+                <div style={{position:"absolute",top:-8,right:-8,fontSize:56,opacity:0.07}}>{area.icon}</div>
+                {/* Icono */}
+                <div style={{width:44,height:44,borderRadius:12,background:area.color+"18",border:"1px solid "+area.color+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,marginBottom:12}}>{area.icon}</div>
+                <p style={{fontWeight:800,fontSize:15,marginBottom:2}}>{area.nombre}</p>
+                <p style={{color:MUT,fontSize:11,marginBottom:10,lineHeight:1.4}}>{area.desc}</p>
+                <div style={{borderTop:"1px solid "+BORD,paddingTop:8}}>
+                  <Row>
+                    <span style={{color:MUT,fontSize:10}}>Platillos</span>
+                    <span style={{fontWeight:700,fontSize:12,color:area.color}}>{n}</span>
+                  </Row>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Almacen General */}
+        <div onClick={()=>setArea("almacen_global")} style={{background:CARD,border:"1px solid "+BLUE+"44",borderRadius:16,padding:16,cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:44,height:44,borderRadius:12,background:BLUE+"18",border:"1px solid "+BLUE+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🏪</div>
+          <div style={{flex:1}}>
+            <p style={{fontWeight:800,fontSize:15,marginBottom:2}}>Almacen General</p>
+            <p style={{color:MUT,fontSize:11}}>Ingredientes compartidos por todas las areas</p>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <p style={{fontWeight:700,fontSize:14,color:BLUE}}>{alm.length} ing.</p>
+            <p style={{color:MUT,fontSize:10}}>{fm(totalVal)}</p>
+          </div>
+        </div>
+
+        {/* Panel usuarios (solo admin) */}
+        {user.rol==="admin"&&<div onClick={()=>setArea("usuarios")} style={{background:CARD,border:"1px solid "+PUR+"44",borderRadius:16,padding:16,cursor:"pointer",display:"flex",alignItems:"center",gap:14,marginTop:12}}>
+          <div style={{width:44,height:44,borderRadius:12,background:PUR+"18",border:"1px solid "+PUR+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>👥</div>
+          <div style={{flex:1}}>
+            <p style={{fontWeight:800,fontSize:15,marginBottom:2}}>Usuarios</p>
+            <p style={{color:MUT,fontSize:11}}>Gestionar accesos y contraseñas</p>
+          </div>
+          <span style={{color:PUR,fontSize:12,fontWeight:700}}>Admin →</span>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+const PM='Eres experto en menus de restaurante. Analiza la imagen y extrae todos los platillos/bebidas. Responde SOLO con JSON valido sin texto extra. Estructura: {"area":"string","items":[{"nombre":"string","descripcion":"string o null","precio":0,"categoria":"string"}]}';
+
+function MenuScanner({areaId, recs, setRecs, info, onClose}){
+  const [img,setImg]=useState(null),[b,setB]=useState(null),[loading,setLoading]=useState(false);
+  const [res,setRes]=useState(null),[error,setError]=useState(null),[saved,setSaved]=useState(false);
+  const fR=useRef(),cR=useRef();
+
+  function hFile(file){if(!file)return;setImg(URL.createObjectURL(file));setRes(null);setError(null);b64file(file).then(setB);}
+
+  async function analyze(){
+    if(!b)return;setLoading(true);setError(null);
+    try{
+      const resp=await fetch(RAILWAY_URL+"/scan-menu",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_base64:b,media_type:"image/jpeg",prompt:PM})});
+      if(!resp.ok)throw new Error("Error "+resp.status);
+      const data=await resp.json();
+      if(data.error)throw new Error(data.error);
+      const marked=data.items.map(it=>{
+        const existing=recs.find(r=>r.nombre.toLowerCase()===it.nombre.toLowerCase());
+        return{...it,existing:existing||null,sel:true,changed:existing&&existing.precio!==it.precio};
+      });
+      setRes({...data,items:marked});
+    }catch(e){setError("No se pudo leer: "+e.message);}
+    finally{setLoading(false);}
+  }
+
+  function aplicar(){
+    if(!res)return;
+    const selected=res.items.filter(it=>it.sel);
+    // Actualizar precios existentes
+    selected.filter(it=>it.existing&&it.changed).forEach(it=>{
+      setRecs(prev=>prev.map(r=>r.id===it.existing.id?{...r,precio:it.precio}:r));
+    });
+    // Agregar nuevos
+    const nuevos=selected.filter(it=>!it.existing);
+    if(nuevos.length>0){
+      const prefix=areaId==="vinos"?"VIN":areaId==="barra"?"BAR":areaId==="postres"?"POS":"PLT";
+      setRecs(prev=>[...prev,...nuevos.map(it=>({id:prefix+String(uid()).padStart(3,"0"),nombre:it.nombre,cat:it.categoria||"Menu",precio:it.precio,lineas:[]}))]);
+    }
+    setSaved(true);
+  }
+
+  if(saved){
+    return(
+      <div style={{position:"fixed",inset:0,background:BG,zIndex:300,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+        <p style={{fontSize:48,marginBottom:16}}>✅</p>
+        <p style={{fontWeight:800,fontSize:18,marginBottom:8}}>Menu actualizado</p>
+        <p style={{color:MUT,fontSize:13,marginBottom:24,textAlign:"center"}}>Los cambios ya aparecen en tu lista de recetas</p>
+        <Btn onClick={onClose}>Cerrar</Btn>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:BG,zIndex:300,overflowY:"auto"}}>
+      <div style={{background:CARD,borderBottom:"1px solid "+BORD,padding:"14px 16px",position:"sticky",top:0,zIndex:301}}>
+        <Row>
+          <button onClick={onClose} style={{background:"none",border:"none",color:info.color,fontWeight:700,fontSize:14,cursor:"pointer"}}>← Cerrar</button>
+          <span style={{fontWeight:700,fontSize:13}}>📸 Escanear Menú</span>
+        </Row>
+      </div>
+      <div style={{padding:16}}>
+        {!img&&<div>
+          <div onClick={()=>cR.current.click()} style={{border:"2px dashed "+BORD,borderRadius:14,padding:"36px 20px",textAlign:"center",cursor:"pointer",background:CARD,marginBottom:10}}>
+            <p style={{fontSize:40,marginBottom:8}}>📋</p>
+            <p style={{fontWeight:700,fontSize:15,marginBottom:4}}>Fotografía el menú</p>
+            <p style={{color:MUT,fontSize:12}}>El sistema lee los platillos y actualiza precios automáticamente</p>
+          </div>
+          <input ref={cR} type="file" accept="image/*" capture="environment" onChange={e=>hFile(e.target.files[0])} style={{display:"none"}}/>
+          <Btn onClick={()=>fR.current.click()} outline style={{width:"100%",padding:12}}>Subir desde archivos</Btn>
+          <input ref={fR} type="file" accept="image/*" onChange={e=>hFile(e.target.files[0])} style={{display:"none"}}/>
+        </div>}
+        {img&&!loading&&!res&&<div>
+          <div style={{borderRadius:12,overflow:"hidden",marginBottom:12,border:"1px solid "+BORD}}><img src={img} alt="menu" style={{width:"100%",maxHeight:300,objectFit:"contain",background:"#000"}}/></div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn outline onClick={()=>{setImg(null);setB(null);}} style={{flex:1}}>Cambiar</Btn>
+            <Btn onClick={analyze} style={{flex:2}}>Leer con IA</Btn>
+          </div>
+        </div>}
+        {loading&&<Ld color={info.color}/>}
+        {error&&<Box bc={RED}><p style={{color:RED,fontSize:13}}>{error}</p></Box>}
+        {res&&<div>
+          <Box style={{marginBottom:12}}>
+            <p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{res.area||"Menú"}</p>
+            <p style={{color:MUT,fontSize:12}}>{res.items.length} items detectados</p>
+          </Box>
+          {res.items.map((it,i)=>(
+            <div key={i} onClick={()=>setRes(prev=>({...prev,items:prev.items.map((x,j)=>j===i?{...x,sel:!x.sel}:x)}))} style={{cursor:"pointer"}}>
+              <Box bc={it.sel?(it.existing?BORD:GREEN):BORD} style={{marginBottom:8,opacity:it.sel?1:0.4}}>
+                <Row>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flex:1}}>
+                    <div style={{width:18,height:18,borderRadius:4,background:it.sel?ACC:SURF,border:"1px solid "+(it.sel?ACC:MUT),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:BG,flexShrink:0}}>{it.sel?"✓":""}</div>
+                    <div>
+                      <p style={{fontWeight:700,fontSize:13}}>{it.nombre}</p>
+                      {it.existing?<p style={{color:GREEN,fontSize:11}}>✓ Ya existe</p>:<p style={{color:GREEN,fontSize:11}}>Nuevo item</p>}
+                    </div>
+                  </div>
+                  <p style={{fontWeight:800,fontSize:14}}>{fm(it.precio)}</p>
+                </Row>
+              </Box>
+            </div>
+          ))}
+          <div style={{position:"sticky",bottom:16,marginTop:14}}>
+            <Btn onClick={aplicar} style={{width:"100%",padding:16,fontSize:15}}>
+              Aplicar {res.items.filter(it=>it.sel).length} cambios al menú
+            </Btn>
+          </div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({alm, subs, recs, setTab}){
+  const [detRec,setDetRec]=useState(null);
+  const al=alm.filter(a=>stSt(a)==="rep").length;
   const val=alm.reduce((s,a)=>s+a.precio*a.stock,0);
+
+  if(detRec)return <DetalleReceta rec={detRec} alm={alm} subs={subs} onClose={()=>setDetRec(null)}/>;
+
+  function KpiBtn({icon,label,value,color,dest}){
+    return(
+      <div onClick={()=>dest&&setTab(dest)} style={{flex:1,minWidth:0,background:CARD,border:"1px solid "+BORD,borderRadius:12,padding:14,cursor:dest?"pointer":"default"}}>
+        <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>{icon} {label}</p>
+        <p style={{color:color||ACC,fontSize:20,fontWeight:800}}>{value}</p>
+        {dest&&<p style={{color:MUT,fontSize:9,marginTop:3}}>Ver →</p>}
+      </div>
+    );
+  }
+
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-        <Kpi icon="▪" label="Ingredientes" value={alm.length} color={TEXT}/>
-        <Kpi icon="▪" label="Sub-Recetas" value={subs.length} color={BLUE}/>
+        <KpiBtn icon="🏪" label="Ingredientes" value={alm.length} color={BLUE} dest="almacen"/>
+        <KpiBtn icon="🧪" label="Sub-Recetas" value={subs.length} color={PUR} dest="subs"/>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-        <Kpi icon="▪" label="Platillos" value={recs.length} color={TEXT}/>
-        <Kpi icon="▪" label="Alertas" value={al} color={al>0?RED:GREEN}/>
+        <KpiBtn icon="🍽" label="Platillos" value={recs.length} color={ACC} dest="recetas"/>
+        <KpiBtn icon="⚠" label="Alertas" value={al} color={al>0?RED:GREEN} dest="almacen"/>
       </div>
-      <Box style={{marginBottom:16,borderColor:al>0?RED:BORD}}>
-        <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Valor en Almacen</p>
-        <p style={{color:TEXT,fontSize:24,fontWeight:800,letterSpacing:"-0.03em"}}>{fmt(val)}</p>
+      <Box style={{marginBottom:16}}>
+        <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>💰 Valor en Almacen</p>
+        <p style={{color:GREEN,fontSize:22,fontWeight:800}}>{fm(val)}</p>
       </Box>
-      <p style={{color:MUT,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Ranking Platillos</p>
+      <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Ranking de Platillos</p>
       {recs.map(rec=>{
-        const c=recCosto(rec,alm,subs),fc=rec.precio>0?c/rec.precio:0,mg=rec.precio-c;
+        const c=recCosto(rec,alm,subs),fc=rec.precio>0?c/rec.precio:0,mg=rec.precio-c,mgp=rec.precio>0?mg/rec.precio:0;
         return(
-          <Box key={rec.id} style={{marginBottom:8}}>
-            <Row style={{marginBottom:6}}>
-              <div><p style={{fontWeight:700,fontSize:13,marginBottom:4,letterSpacing:"-0.01em"}}>{rec.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag></div></div>
-              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15,letterSpacing:"-0.02em"}}>{fmt(rec.precio)}</p><p style={{color:MUT,fontSize:11}}>Costo {fmt(c)}</p></div>
-            </Row>
-            <div style={{background:SURF,borderRadius:6,padding:"6px 10px",display:"flex",justifyContent:"space-between"}}>
-              <span style={{fontSize:12,color:MUT}}>FC <span style={{color:fcC(fc),fontWeight:700}}>{pct(fc)}</span></span>
-              <span style={{fontSize:12,color:MUT}}>Margen <span style={{color:GREEN,fontWeight:700}}>{fmt(mg)}</span></span>
-            </div>
-          </Box>
+          <div key={rec.id} onClick={()=>setDetRec(rec)} style={{cursor:"pointer",marginBottom:8}}>
+            <Box>
+              <Row style={{marginBottom:6}}>
+                <div>
+                  <p style={{fontWeight:700,fontSize:13,marginBottom:4}}>{rec.nombre}</p>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag></div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <p style={{fontWeight:800,fontSize:15}}>{fm(rec.precio)}</p>
+                  <p style={{color:ACC,fontSize:12,fontWeight:700}}>Costo: {fm(c)}</p>
+                </div>
+              </Row>
+              <div style={{background:SURF,borderRadius:8,padding:"8px 10px"}}>
+                <Row style={{marginBottom:6}}>
+                  <span style={{fontSize:12,color:MUT}}>Food Cost:</span>
+                  <span style={{fontSize:13,color:fcC(fc),fontWeight:800}}>{pc(fc)}</span>
+                </Row>
+                <div style={{borderTop:"1px solid "+BORD,paddingTop:6}}>
+                  <Row>
+                    <span style={{fontSize:12,color:MUT}}>Utilidad:</span>
+                    <div style={{textAlign:"right"}}>
+                      <span style={{fontSize:14,color:GREEN,fontWeight:800}}>{fm(mg)}</span>
+                      <span style={{fontSize:12,color:GREEN,fontWeight:700,marginLeft:6}}>({pc(mgp)})</span>
+                    </div>
+                  </Row>
+                </div>
+                <p style={{color:MUT,fontSize:10,marginTop:4,textAlign:"right"}}>Toca para ver desglose →</p>
+              </div>
+            </Box>
+          </div>
         );
       })}
       {al>0&&<div style={{marginTop:16}}>
-        <p style={{color:RED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Reponer urgente</p>
-        {alm.filter(a=>stSt(a)==="reponer").map(a=><Box key={a.id} bc={RED} style={{marginBottom:6}}><Row><div><p style={{fontWeight:700,fontSize:13}}>{a.nombre}</p><p style={{color:MUT,fontSize:11}}>{a.prov}</p></div><p style={{color:RED,fontWeight:700,fontSize:13}}>Stock: {a.stock} {a.unidad}</p></Row></Box>)}
+        <p style={{color:RED,fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Reponer urgente</p>
+        {alm.filter(a=>stSt(a)==="rep").map(a=><Box key={a.id} bc={RED} style={{marginBottom:6}}><Row><div><p style={{fontWeight:700,fontSize:13}}>{a.nombre}</p><p style={{color:MUT,fontSize:11}}>{a.prov}</p></div><p style={{color:RED,fontWeight:700,fontSize:13}}>Stock: {a.stock} {a.unidad}</p></Row></Box>)}
       </div>}
     </div>
   );
 }
 
-function Almacen({alm,setAlm}){
+function Almacen({alm,setAlm,soloVer=false}){
   const [q,setQ]=useState("");
+  const [provFilt,setProvFilt]=useState("");
   const [show,setShow]=useState(false);
   const [editing,setEditing]=useState(null);
   const [saving,setSaving]=useState(false);
   const [f,setF]=useState({nombre:"",cat:"Carnes",unidad:"kg",precio:"",stock:"",min:"",max:"",prov:""});
-  const [ef,setEf]=useState({nombre:"",cat:"",unidad:"",precio:"",stock:"",min:"",max:"",prov:""});
-  const list=alm.filter(a=>a.nombre.toLowerCase().includes(q.toLowerCase())||a.id.toLowerCase().includes(q.toLowerCase()));
+  const [ef,setEf]=useState({});
+  const CATS=["Carnes","Mariscos","Verduras","Frutas","Lacteos","Abarrotes","Especias","Bebidas","Otro"];
+  const UNITS=["kg","litro","pieza","gramo","ml","caja","bolsa","lata","manojo","docena"];
+  const proveedores=[...new Set(alm.map(a=>a.prov).filter(Boolean))];
+  const list=alm.filter(a=>{
+    const mq=a.nombre.toLowerCase().includes(q.toLowerCase())||a.id.toLowerCase().includes(q.toLowerCase());
+    const mp=!provFilt||a.prov===provFilt;
+    return mq&&mp;
+  });
 
   async function save(){
-    if(!f.nombre||!f.precio)return;
-    setSaving(true);
+    if(!f.nombre||!f.precio)return; setSaving(true);
     try{
       const newId="ING"+String(uid()).padStart(3,"0");
       const obj={id:newId,nombre:f.nombre,cat:f.cat,unidad:f.unidad,precio:+f.precio,stock:+f.stock||0,min:+f.min||0,max:+f.max||0,prov:f.prov,updated:hoy()};
       await sb("ingredientes",{method:"POST",body:JSON.stringify(obj)});
-      setAlm(prev=>[...prev,obj]);
-      setF({nombre:"",cat:"Carnes",unidad:"kg",precio:"",stock:"",min:"",max:"",prov:""});setShow(false);
-    }catch(e){alert("Error: "+e.message);}
-    finally{setSaving(false);}
+      setAlm(prev=>[...prev,obj]); setF({nombre:"",cat:"Carnes",unidad:"kg",precio:"",stock:"",min:"",max:"",prov:""}); setShow(false);
+    }catch(e){alert("Error: "+e.message);} finally{setSaving(false);}
   }
-
-  function startEdit(a){setEditing(a.id);setEf({nombre:a.nombre,cat:a.cat,unidad:a.unidad,precio:String(a.precio),stock:String(a.stock),min:String(a.min),max:String(a.max),prov:a.prov||""});}
-
+  function startEdit(a){if(soloVer)return;setEditing(a.id);setEf({nombre:a.nombre,cat:a.cat,unidad:a.unidad,precio:String(a.precio),stock:String(a.stock),min:String(a.min),max:String(a.max),prov:a.prov||""});}
   async function saveEdit(){
-    if(!ef.precio)return;setSaving(true);
+    if(!ef.precio)return; setSaving(true);
     try{
       const upd={nombre:ef.nombre,cat:ef.cat,unidad:ef.unidad,precio:+ef.precio,stock:+ef.stock||0,min:+ef.min||0,max:+ef.max||0,prov:ef.prov,updated:hoy()};
       await sb("ingredientes?id=eq."+editing,{method:"PATCH",body:JSON.stringify(upd)});
-      setAlm(prev=>prev.map(a=>a.id===editing?{...a,...upd}:a));setEditing(null);
-    }catch(e){alert("Error: "+e.message);}
-    finally{setSaving(false);}
+      setAlm(prev=>prev.map(a=>a.id===editing?{...a,...upd}:a)); setEditing(null);
+    }catch(e){alert("Error: "+e.message);} finally{setSaving(false);}
   }
-
   async function deleteIng(id){
     setSaving(true);
     try{
       await sb("ingredientes?id=eq."+id,{method:"DELETE",prefer:"return=minimal"});
-      setAlm(prev=>prev.filter(a=>a.id!==id));setEditing(null);
-    }catch(e){alert("Error: "+e.message);}
-    finally{setSaving(false);}
+      setAlm(prev=>prev.filter(a=>a.id!==id)); setEditing(null);
+    }catch(e){alert("Error: "+e.message);} finally{setSaving(false);}
   }
 
   return(
     <div>
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <div style={{display:"flex",gap:8,marginBottom:8}}>
         <Fld value={q} onChange={setQ} placeholder="Buscar ingrediente..." style={{flex:1}}/>
-        <Btn sm onClick={()=>setShow(!show)}>+ Nuevo</Btn>
+        {!soloVer&&<Btn sm onClick={()=>setShow(!show)}>+ Nuevo</Btn>}
       </div>
-      {show&&<Box bc={ACC} style={{marginBottom:14}}>
-        <p style={{fontWeight:700,fontSize:13,color:TEXT,marginBottom:10,letterSpacing:"-0.01em"}}>Nuevo Ingrediente</p>
+      {proveedores.length>0&&<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        <button key="todos" onClick={()=>setProvFilt("")} style={{padding:"4px 10px",borderRadius:20,border:"none",background:!provFilt?ACC:SURF,color:!provFilt?"#fff":MUT,fontSize:11,cursor:"pointer",fontWeight:!provFilt?700:400}}>Todos</button>
+        {proveedores.map((pv,i)=><button key={i} onClick={()=>setProvFilt(provFilt===pv?"":pv)} style={{padding:"4px 10px",borderRadius:20,border:"none",background:provFilt===pv?BLUE:SURF,color:provFilt===pv?"#fff":MUT,fontSize:11,cursor:"pointer",fontWeight:provFilt===pv?700:400}}>{pv}</button>)}
+      </div>}
+      {show&&!soloVer&&<Box bc={ACC} style={{marginBottom:14}}>
+        <p style={{fontWeight:700,fontSize:13,color:ACC,marginBottom:10}}>+ Nuevo Ingrediente</p>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
           <Fld value={f.nombre} onChange={v=>setF({...f,nombre:v})} placeholder="Nombre *"/>
-          <Sel value={f.cat} onChange={v=>setF({...f,cat:v})}>{["Carnes","Mariscos","Verduras","Frutas","Lacteos","Abarrotes","Especias","Bebidas","Otro"].map(c=><option key={c}>{c}</option>)}</Sel>
+          <Sel value={f.cat} onChange={v=>setF({...f,cat:v})}>{CATS.map(c=><option key={c}>{c}</option>)}</Sel>
           <Fld value={f.precio} onChange={v=>setF({...f,precio:v})} placeholder="Precio *" type="number"/>
-          <Sel value={f.unidad} onChange={v=>setF({...f,unidad:v})}>{["kg","litro","pieza","gramo","ml","caja","bolsa","lata","manojo","docena"].map(u=><option key={u}>{u}</option>)}</Sel>
+          <Sel value={f.unidad} onChange={v=>setF({...f,unidad:v})}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel>
           <Fld value={f.stock} onChange={v=>setF({...f,stock:v})} placeholder="Stock" type="number"/>
           <Fld value={f.prov} onChange={v=>setF({...f,prov:v})} placeholder="Proveedor"/>
           <Fld value={f.min} onChange={v=>setF({...f,min:v})} placeholder="Stock minimo" type="number"/>
           <Fld value={f.max} onChange={v=>setF({...f,max:v})} placeholder="Stock maximo" type="number"/>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <Btn color={ACC} onClick={save} style={{opacity:saving?0.5:1}}>{saving?"Guardando...":"Guardar"}</Btn>
-          <Btn outline onClick={()=>setShow(false)}>Cancelar</Btn>
-        </div>
+        <div style={{display:"flex",gap:8}}><Btn color={GREEN} onClick={save} style={{opacity:saving?0.5:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn outline onClick={()=>setShow(false)}>Cancelar</Btn></div>
       </Box>}
-      <p style={{color:MUT,fontSize:11,marginBottom:8}}>{list.length} ingredientes</p>
+      <p style={{color:MUT,fontSize:11,marginBottom:8}}>{list.length} ingredientes{!soloVer?" - Toca para editar":""}</p>
       {list.map(a=>{
-        const st=stSt(a),bc=st==="reponer"?RED:st==="sobre"?YEL:BORD,isEdit=editing===a.id;
+        const st=stSt(a),bc=st==="rep"?RED:st==="sob"?YEL:BORD,isEdit=editing===a.id;
         return(
           <Box key={a.id} bc={isEdit?ACC:bc} style={{marginBottom:8}}>
             {isEdit?(
               <div>
                 <Row style={{marginBottom:10}}>
-                  <p style={{fontWeight:700,fontSize:13,color:TEXT}}>{a.id}</p>
+                  <p style={{fontWeight:700,fontSize:13,color:ACC}}>Editando: {a.id}</p>
                   <Btn sm outline onClick={()=>setEditing(null)}>Cancelar</Btn>
                 </Row>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
                   <Fld value={ef.nombre} onChange={v=>setEf({...ef,nombre:v})} placeholder="Nombre"/>
-                  <Sel value={ef.cat} onChange={v=>setEf({...ef,cat:v})}>{["Carnes","Mariscos","Verduras","Frutas","Lacteos","Abarrotes","Especias","Bebidas","Otro"].map(c=><option key={c}>{c}</option>)}</Sel>
+                  <Sel value={ef.cat} onChange={v=>setEf({...ef,cat:v})}>{CATS.map(c=><option key={c}>{c}</option>)}</Sel>
                   <Fld value={ef.precio} onChange={v=>setEf({...ef,precio:v})} placeholder="Precio *" type="number"/>
-                  <Sel value={ef.unidad} onChange={v=>setEf({...ef,unidad:v})}>{["kg","litro","pieza","gramo","ml","caja","bolsa","lata","manojo","docena"].map(u=><option key={u}>{u}</option>)}</Sel>
+                  <Sel value={ef.unidad} onChange={v=>setEf({...ef,unidad:v})}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel>
                   <Fld value={ef.stock} onChange={v=>setEf({...ef,stock:v})} placeholder="Stock" type="number"/>
                   <Fld value={ef.prov} onChange={v=>setEf({...ef,prov:v})} placeholder="Proveedor"/>
-                  <Fld value={ef.min} onChange={v=>setEf({...ef,min:v})} placeholder="Stock minimo" type="number"/>
-                  <Fld value={ef.max} onChange={v=>setEf({...ef,max:v})} placeholder="Stock maximo" type="number"/>
+                  <Fld value={ef.min} onChange={v=>setEf({...ef,min:v})} placeholder="Min" type="number"/>
+                  <Fld value={ef.max} onChange={v=>setEf({...ef,max:v})} placeholder="Max" type="number"/>
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <Btn color={ACC} onClick={saveEdit} style={{flex:2,opacity:saving?0.5:1}}>{saving?"Guardando...":"Guardar"}</Btn>
-                  <Btn color={RED} onClick={()=>deleteIng(a.id)} style={{flex:1,opacity:saving?0.5:1,color:"#fff"}}>Eliminar</Btn>
+                  <Btn color={GREEN} onClick={saveEdit} style={{flex:2,opacity:saving?0.5:1}}>{saving?"Guardando...":"Guardar"}</Btn>
+                  <Btn color={RED} onClick={()=>deleteIng(a.id)} style={{flex:1,opacity:saving?0.5:1}}>Eliminar</Btn>
                 </div>
               </div>
             ):(
-              <div onClick={()=>startEdit(a)} style={{cursor:"pointer"}}>
+              <div onClick={()=>startEdit(a)} style={{cursor:soloVer?"default":"pointer"}}>
                 <Row style={{marginBottom:6}}>
-                  <div><p style={{fontWeight:700,fontSize:13,marginBottom:4,letterSpacing:"-0.01em"}}>{a.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(a.cat)}>{a.cat}</Tag><span style={{color:MUT,fontSize:10,alignSelf:"center"}}>{a.id}</span>{a.updated&&<Tag color={BLUE}>actualizado</Tag>}</div></div>
-                  <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15,letterSpacing:"-0.02em"}}>{fmt(a.precio)}</p><p style={{color:MUT,fontSize:11}}>/{a.unidad}</p></div>
+                  <div><p style={{fontWeight:700,fontSize:13,marginBottom:4}}>{a.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(a.cat)}>{a.cat}</Tag><span style={{color:MUT,fontSize:10,alignSelf:"center"}}>{a.id}</span>{a.updated&&<Tag color={ACC}>actualizado</Tag>}</div></div>
+                  <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fm(a.precio)}</p><p style={{color:MUT,fontSize:11}}>/{a.unidad}</p></div>
                 </Row>
                 <Row style={{borderTop:"1px solid "+SURF,paddingTop:6}}>
-                  <span style={{color:MUT,fontSize:11}}>Stock <span style={{color:st==="reponer"?RED:st==="sobre"?YEL:GREEN,fontWeight:700}}>{a.stock} {a.unidad}</span></span>
-                  <span style={{color:MUT,fontSize:11}}>{a.prov}</span>
+                  <span style={{color:MUT,fontSize:11}}>Stock: <span style={{color:st==="rep"?RED:st==="sob"?YEL:GREEN,fontWeight:700}}>{a.stock} {a.unidad}</span></span>
+                  <div style={{textAlign:"right"}}><span style={{color:MUT,fontSize:11,display:"block"}}>{a.prov||"Sin proveedor"}</span>{a.updated&&<span style={{color:ACC,fontSize:10,display:"block"}}>Act: {a.updated}</span>}</div>
                 </Row>
               </div>
             )}
@@ -249,13 +545,13 @@ function SubRecetas({subs,alm}){
         return(
           <Box key={sub.id} style={{marginBottom:12}}>
             <Row style={{marginBottom:8}}>
-              <div><p style={{fontWeight:700,fontSize:14,marginBottom:4,letterSpacing:"-0.01em"}}>{sub.nombre}</p><div style={{display:"flex",gap:6}}><Tag color={BLUE}>{sub.tipo}</Tag><span style={{color:MUT,fontSize:10,alignSelf:"center"}}>{sub.id}</span></div></div>
-              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15,color:TEXT,letterSpacing:"-0.02em"}}>{fmt(cxu)}</p><p style={{color:MUT,fontSize:11}}>/{sub.u}</p></div>
+              <div><p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{sub.nombre}</p><div style={{display:"flex",gap:6}}><Tag color={PUR}>{sub.tipo}</Tag><span style={{color:MUT,fontSize:10,alignSelf:"center"}}>{sub.id}</span></div></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15,color:PUR}}>{fm(cxu)}</p><p style={{color:MUT,fontSize:11}}>/{sub.u}</p></div>
             </Row>
-            <div style={{background:SURF,borderRadius:7,padding:10}}>
+            <div style={{background:SURF,borderRadius:8,padding:10}}>
               <p style={{color:MUT,fontSize:11,marginBottom:6,fontWeight:600}}>Rinde {sub.rend}{sub.u}</p>
-              {sub.ings.map((l,i)=>{const ing=alm.find(a=>a.id===l.id);return <Row key={i} style={{padding:"3px 0",borderBottom:"1px solid "+BORD}}><span style={{fontSize:12}}>{ing?ing.nombre:l.id} <span style={{color:MUT}}>{l.q} {ing?ing.unidad:""}</span></span><span style={{fontSize:12,color:TEXT}}>{fmt(ing?ing.precio*l.q:0)}</span></Row>;})}
-              <Row style={{marginTop:6}}><span style={{fontSize:12,color:MUT,fontWeight:600}}>Total lote</span><span style={{fontSize:13,fontWeight:700}}>{fmt(tot)}</span></Row>
+              {sub.ings.map((l,i)=>{const ing=alm.find(a=>a.id===l.id);return <Row key={i} style={{padding:"3px 0",borderBottom:"1px solid "+BORD}}><span style={{fontSize:12}}>{ing?ing.nombre:l.id} <span style={{color:MUT}}>{l.q} {ing?ing.unidad:""}</span></span><span style={{fontSize:12,color:ACC}}>{fm(ing?ing.precio*l.q:0)}</span></Row>;})}
+              <Row style={{marginTop:6}}><span style={{fontSize:12,color:MUT,fontWeight:600}}>Total lote</span><span style={{fontSize:13,fontWeight:700}}>{fm(tot)}</span></Row>
             </div>
           </Box>
         );
@@ -265,87 +561,82 @@ function SubRecetas({subs,alm}){
 }
 
 function DetalleReceta({rec,alm,subs,onClose}){
-  const costo=recCosto(rec,alm,subs),fc=rec.precio>0?costo/rec.precio:0,mg=rec.precio-costo;
+  const costo=recCosto(rec,alm,subs),fc=rec.precio>0?costo/rec.precio:0,mg=rec.precio-costo,mgp=rec.precio>0?mg/rec.precio:0;
   return(
-    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:BG,zIndex:200,overflowY:"auto",paddingBottom:40}}>
+    <div style={{position:"fixed",inset:0,background:BG,zIndex:200,overflowY:"auto",paddingBottom:40}}>
       <div style={{background:CARD,borderBottom:"1px solid "+BORD,padding:"14px 16px",position:"sticky",top:0,zIndex:201}}>
-        <Row>
-          <button onClick={onClose} style={{background:"none",border:"none",color:TEXT,fontWeight:700,fontSize:14,cursor:"pointer",padding:"4px 0",letterSpacing:"-0.01em"}}>&larr; Volver</button>
-          <Tag color={catC(rec.cat)}>{rec.cat}</Tag>
-        </Row>
-        <p style={{fontWeight:800,fontSize:20,marginTop:8,letterSpacing:"-0.02em"}}>{rec.nombre}</p>
+        <Row><button onClick={onClose} style={{background:"none",border:"none",color:ACC,fontWeight:700,fontSize:14,cursor:"pointer"}}>← Volver</button><Tag color={catC(rec.cat)}>{rec.cat}</Tag></Row>
+        <p style={{fontWeight:800,fontSize:20,marginTop:8}}>{rec.nombre}</p>
         <p style={{color:MUT,fontSize:12}}>{rec.id}</p>
       </div>
       <div style={{padding:16}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-          {[["Precio Venta",fmt(rec.precio),TEXT],["Costo Total",fmt(costo),BLUE],["Food Cost",pct(fc),fcC(fc)],["Margen Bruto",fmt(mg),GREEN],["Margen %",pct(rec.precio>0?mg/rec.precio:0),GREEN],["Clasificacion",fcL(fc),fcC(fc)]].map(item=>(
-            <div key={item[0]} style={{background:CARD,border:"1px solid "+BORD,borderRadius:8,padding:12}}>
-              <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:4}}>{item[0]}</p>
-              <p style={{color:item[2],fontWeight:800,fontSize:16,letterSpacing:"-0.02em"}}>{item[1]}</p>
+          {[["Precio Venta",fm(rec.precio),TEXT],["Costo Total",fm(costo),ACC],["Food Cost",pc(fc),fcC(fc)],["Margen Bruto",fm(mg),GREEN],["Margen %",pc(mgp),GREEN],["Clasificacion",fcL(fc),fcC(fc)]].map(item=>(
+            <div key={item[0]} style={{background:CARD,border:"1px solid "+BORD,borderRadius:10,padding:12}}>
+              <p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{item[0]}</p>
+              <p style={{color:item[2],fontWeight:800,fontSize:16}}>{item[1]}</p>
             </div>
           ))}
         </div>
-        <p style={{color:MUT,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Desglose</p>
+        <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:10}}>Desglose</p>
         {rec.lineas.map((l,i)=>{
           const isI=l.t==="ING",ing=isI?alm.find(a=>a.id===l.i):null,sub=!isI?subs.find(s=>s.id===l.i):null;
           const nm=isI?(ing?ing.nombre:l.i):(sub?sub.nombre:l.i);
           const cu=isI?(ing?ing.precio:0):subCosto(sub||{ings:[],rend:1},alm);
           const lc=cu*l.q,pp=costo>0?lc/costo:0;
-          const stockAct=isI&&ing?ing.stock:null,stockUnid=isI&&ing?ing.unidad:"";
-          const porcPosibles=isI&&ing&&l.q>0?Math.floor(ing.stock/l.q):null;
           const stockOk=isI&&ing?ing.stock>ing.min:true;
           return(
-            <div key={i} style={{background:CARD,border:"1px solid "+(isI&&ing&&!stockOk?RED:BORD),borderRadius:8,padding:12,marginBottom:8}}>
+            <div key={i} style={{background:CARD,border:"1px solid "+(isI&&ing&&!stockOk?RED:BORD),borderRadius:10,padding:12,marginBottom:8}}>
               <Row style={{marginBottom:6}}>
                 <div style={{display:"flex",gap:6,alignItems:"center",flex:1,minWidth:0}}>
-                  <span style={{fontSize:9,color:isI?TEXT:BLUE,background:isI?TEXT+"15":BLUE+"15",padding:"2px 6px",borderRadius:3,fontWeight:700,flexShrink:0}}>{l.t}</span>
+                  <span style={{fontSize:9,color:isI?ACC:PUR,background:isI?ACC+"22":PUR+"22",padding:"2px 6px",borderRadius:3,fontWeight:700,flexShrink:0}}>{l.t}</span>
                   <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nm}</span>
                 </div>
-                <span style={{fontWeight:800,fontSize:14,color:TEXT,flexShrink:0,marginLeft:8}}>{fmt(lc)}</span>
+                <span style={{fontWeight:800,fontSize:14,color:ACC,flexShrink:0,marginLeft:8}}>{fm(lc)}</span>
               </Row>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                <div style={{background:SURF,borderRadius:6,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Cantidad</p><p style={{fontWeight:700,fontSize:13}}>{l.q} {isI?(ing?ing.unidad:""):(sub?sub.u:"")}</p></div>
-                <div style={{background:SURF,borderRadius:6,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Costo unitario</p><p style={{fontWeight:700,fontSize:13}}>{fmt(cu)}</p></div>
-                {stockAct!==null&&<div style={{background:SURF,borderRadius:6,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Inventario</p><p style={{fontWeight:700,fontSize:13,color:stockOk?GREEN:RED}}>{stockAct} {stockUnid}</p></div>}
-                {porcPosibles!==null&&<div style={{background:SURF,borderRadius:6,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Porciones</p><p style={{fontWeight:700,fontSize:13,color:porcPosibles<3?RED:porcPosibles<8?YEL:GREEN}}>{porcPosibles}</p></div>}
-                <div style={{background:SURF,borderRadius:6,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>% del costo</p><p style={{fontWeight:700,fontSize:13}}>{pct(pp)}</p></div>
+                <div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Cantidad</p><p style={{fontWeight:700,fontSize:13}}>{l.q} {isI?(ing?ing.unidad:""):(sub?sub.u:"")}</p></div>
+                <div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Costo unit.</p><p style={{fontWeight:700,fontSize:13}}>{fm(cu)}</p></div>
+                <div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>% del costo</p><p style={{fontWeight:700,fontSize:13}}>{pc(pp)}</p></div>
+                {isI&&ing&&<div style={{background:SURF,borderRadius:7,padding:"6px 8px"}}><p style={{color:MUT,fontSize:9,fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Inventario</p><p style={{fontWeight:700,fontSize:13,color:stockOk?GREEN:RED}}>{ing.stock} {ing.unidad}</p></div>}
               </div>
-              {isI&&ing&&!stockOk&&<div style={{marginTop:6,background:RED+"18",borderRadius:5,padding:"4px 8px"}}><span style={{color:RED,fontSize:11,fontWeight:600}}>Stock bajo — reponer {ing.nombre}</span></div>}
+              {isI&&ing&&!stockOk&&<div style={{marginTop:6,background:RED+"22",borderRadius:6,padding:"4px 8px"}}><span style={{color:RED,fontSize:11,fontWeight:600}}>Stock bajo</span></div>}
             </div>
           );
         })}
-        <div style={{background:CARD,border:"1px solid "+BORD,borderRadius:8,padding:14,marginTop:8}}>
-          <p style={{color:MUT,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Rentabilidad</p>
-          <Row style={{marginBottom:6}}><span style={{color:MUT,fontSize:13}}>Precio de venta</span><span style={{fontWeight:700,fontSize:15}}>{fmt(rec.precio)}</span></Row>
-          <Row style={{marginBottom:6}}><span style={{color:MUT,fontSize:13}}>Costo ingredientes</span><span style={{fontWeight:700,fontSize:15,color:BLUE}}>- {fmt(costo)}</span></Row>
-          <div style={{borderTop:"1px solid "+BORD,paddingTop:8,marginTop:4}}><Row><span style={{fontWeight:700,fontSize:14}}>Utilidad bruta</span><span style={{fontWeight:800,fontSize:18,color:TEXT}}>{fmt(mg)}</span></Row></div>
-        </div>
+        <Box bc={GREEN} style={{marginTop:8}}>
+          <Row style={{marginBottom:4}}><span style={{color:MUT,fontSize:13}}>Precio de venta</span><span style={{fontWeight:700,fontSize:15}}>{fm(rec.precio)}</span></Row>
+          <Row style={{marginBottom:4}}><span style={{color:MUT,fontSize:13}}>Costo ingredientes</span><span style={{fontWeight:700,fontSize:15,color:ACC}}>- {fm(costo)}</span></Row>
+          <div style={{borderTop:"1px solid "+BORD,paddingTop:8,marginTop:4}}>
+            <Row><span style={{fontWeight:700,fontSize:14}}>Utilidad bruta</span><div style={{textAlign:"right"}}><span style={{fontWeight:800,fontSize:18,color:GREEN}}>{fm(mg)}</span><span style={{fontWeight:700,fontSize:14,color:GREEN,marginLeft:8}}>({pc(mgp)})</span></div></Row>
+          </div>
+        </Box>
       </div>
     </div>
   );
 }
 
 function Recetas({recs,alm,subs}){
-  const [q,setQ]=useState(""),[cat,setCat]=useState("Todas");
-  const [detalle,setDetalle]=useState(null);
+  const [q,setQ]=useState(""),[cat,setCat]=useState("Todas"),[det,setDet]=useState(null);
   const list=recs.filter(r=>(cat==="Todas"||r.cat===cat)&&r.nombre.toLowerCase().includes(q.toLowerCase()));
-  if(detalle)return <DetalleReceta rec={detalle} alm={alm} subs={subs} onClose={()=>setDetalle(null)}/>;
+  if(det)return <DetalleReceta rec={det} alm={alm} subs={subs} onClose={()=>setDet(null)}/>;
   return(
     <div>
       <Fld value={q} onChange={setQ} placeholder="Buscar platillo..." style={{marginBottom:10}}/>
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {["Todas","Entradas","Pastas","Principales"].map(c=><button key={c} onClick={()=>setCat(c)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid "+(cat===c?ACC:BORD),background:cat===c?ACC:"transparent",color:cat===c?BG:MUT,fontWeight:cat===c?700:500,fontSize:12,cursor:"pointer",letterSpacing:"0.01em"}}>{c}</button>)}
+        {["Todas","Entradas","Pastas","Principales"].map(c=><button key={c} onClick={()=>setCat(c)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:cat===c?ACC:SURF,color:cat===c?"#fff":MUT,fontWeight:cat===c?700:500,fontSize:12,cursor:"pointer"}}>{c}</button>)}
       </div>
+      <p style={{color:MUT,fontSize:11,marginBottom:10}}>Toca un elemento para ver el desglose completo</p>
       {list.map(rec=>{
-        const c=recCosto(rec,alm,subs),fc=rec.precio>0?c/rec.precio:0;
-        const stockBajo=rec.lineas.some(l=>{if(l.t!=="ING")return false;const ing=alm.find(a=>a.id===l.i);return ing&&ing.stock<=ing.min;});
+        const c=recCosto(rec,alm,subs),fc=rec.precio>0?c/rec.precio:0,mg=rec.precio-c,mgp=rec.precio>0?mg/rec.precio:0;
+        const stk=rec.lineas.some(l=>{if(l.t!=="ING")return false;const i=alm.find(a=>a.id===l.i);return i&&i.stock<=i.min;});
         return(
-          <Box key={rec.id} bc={stockBajo?RED:BORD} style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setDetalle(rec)}>
+          <Box key={rec.id} bc={stk?RED:BORD} style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setDet(rec)}>
             <Row style={{marginBottom:8}}>
-              <div><p style={{fontWeight:700,fontSize:14,marginBottom:4,letterSpacing:"-0.01em"}}>{rec.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag>{stockBajo&&<Tag color={RED}>Stock bajo</Tag>}</div></div>
-              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15,letterSpacing:"-0.02em"}}>{fmt(rec.precio)}</p><p style={{color:fcC(fc),fontSize:12,fontWeight:700}}>FC {pct(fc)}</p><p style={{color:GREEN,fontSize:11}}>{fmt(rec.precio-c)}</p></div>
+              <div><p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{rec.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag>{stk&&<Tag color={RED}>Stock bajo</Tag>}</div></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fm(rec.precio)}</p><p style={{color:fcC(fc),fontSize:12,fontWeight:700}}>FC {pc(fc)}</p><p style={{color:GREEN,fontSize:11,fontWeight:700}}>{fm(mg)} ({pc(mgp)})</p></div>
             </Row>
-            <Row style={{borderTop:"1px solid "+SURF,paddingTop:6}}><span style={{color:MUT,fontSize:11}}>Costo {fmt(c)}</span><span style={{color:MUT,fontSize:12,fontWeight:600}}>Ver &rarr;</span></Row>
+            <Row style={{borderTop:"1px solid "+SURF,paddingTop:6}}><span style={{color:MUT,fontSize:11}}>Costo: {fm(c)}</span><span style={{color:MUT,fontSize:12,fontWeight:600}}>Ver detalle →</span></Row>
           </Box>
         );
       })}
@@ -359,22 +650,22 @@ function PorPlatillo({recs,alm,subs}){
   const c=rec?recCosto(rec,alm,subs):0,fc=rec&&rec.precio>0?c/rec.precio:0,mg=rec?rec.precio-c:0;
   return(
     <div>
-      <Box bc={BORD} style={{marginBottom:14}}>
+      <Box bc={ACC} style={{marginBottom:14}}>
         <p style={{color:MUT,fontSize:11,marginBottom:6}}>Selecciona platillo</p>
-        <Sel value={sel} onChange={setSel} style={{fontWeight:700,fontSize:14}}>{recs.map(r=><option key={r.id} value={r.id}>{r.id} — {r.nombre}</option>)}</Sel>
+        <Sel value={sel} onChange={setSel} style={{fontWeight:700,fontSize:14,borderColor:ACC}}>{recs.map(r=><option key={r.id} value={r.id}>{r.id} - {r.nombre}</option>)}</Sel>
       </Box>
       {rec&&<div>
-        <Box bc={BORD} style={{marginBottom:12}}>
-          <p style={{fontWeight:800,fontSize:17,marginBottom:4,letterSpacing:"-0.02em"}}>{rec.nombre}</p>
+        <Box bc={fcC(fc)} style={{marginBottom:12}}>
+          <p style={{fontWeight:800,fontSize:17,marginBottom:4}}>{rec.nombre}</p>
           <Tag color={catC(rec.cat)}>{rec.cat}</Tag>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:12}}>
-            {[["Precio Venta",fmt(rec.precio),TEXT],["Costo Total",fmt(c),BLUE],["Food Cost",pct(fc),fcC(fc)],["Margen Bruto",fmt(mg),GREEN],["Margen %",pct(rec.precio>0?mg/rec.precio:0),GREEN],["Clasificacion",fcL(fc),fcC(fc)]].map(item=>(
-              <div key={item[0]} style={{background:SURF,borderRadius:7,padding:10}}><p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>{item[0]}</p><p style={{color:item[2],fontWeight:800,fontSize:15,letterSpacing:"-0.02em"}}>{item[1]}</p></div>
+            {[["Precio Venta",fm(rec.precio),TEXT],["Costo Total",fm(c),ACC],["Food Cost",pc(fc),fcC(fc)],["Margen Bruto",fm(mg),GREEN],["Margen %",pc(rec.precio>0?mg/rec.precio:0),GREEN],["Clasificacion",fcL(fc),fcC(fc)]].map(item=>(
+              <div key={item[0]} style={{background:SURF,borderRadius:8,padding:10}}><p style={{color:MUT,fontSize:10,fontWeight:600,textTransform:"uppercase",marginBottom:3}}>{item[0]}</p><p style={{color:item[2],fontWeight:800,fontSize:15}}>{item[1]}</p></div>
             ))}
           </div>
         </Box>
         <Box>
-          <p style={{fontWeight:700,fontSize:10,color:MUT,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Desglose</p>
+          <p style={{fontWeight:700,fontSize:11,color:MUT,textTransform:"uppercase",marginBottom:10}}>Desglose Completo</p>
           {rec.lineas.map((l,i)=>{
             const isI=l.t==="ING",ing=isI?alm.find(a=>a.id===l.i):null,sub=!isI?subs.find(s=>s.id===l.i):null;
             const nm=isI?(ing?ing.nombre:l.i):(sub?sub.nombre:l.i);
@@ -383,10 +674,10 @@ function PorPlatillo({recs,alm,subs}){
             return(
               <div key={i} style={{padding:"8px 0",borderBottom:"1px solid "+BORD}}>
                 <Row style={{marginBottom:4}}>
-                  <div style={{display:"flex",gap:6,alignItems:"center",flex:1,minWidth:0}}><span style={{fontSize:9,color:isI?TEXT:BLUE,background:isI?TEXT+"12":BLUE+"12",padding:"1px 6px",borderRadius:3,fontWeight:700,flexShrink:0}}>{l.t}</span><span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nm}</span></div>
-                  <span style={{fontSize:13,fontWeight:700,color:TEXT,flexShrink:0,marginLeft:8}}>{fmt(lc)}</span>
+                  <div style={{display:"flex",gap:6,alignItems:"center",flex:1,minWidth:0}}><span style={{fontSize:9,color:isI?ACC:PUR,background:isI?ACC+"22":PUR+"22",padding:"1px 6px",borderRadius:3,fontWeight:700,flexShrink:0}}>{l.t}</span><span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nm}</span></div>
+                  <span style={{fontSize:13,fontWeight:700,color:ACC,flexShrink:0,marginLeft:8}}>{fm(lc)}</span>
                 </Row>
-                <Row><span style={{color:MUT,fontSize:11}}>{l.q} {isI?(ing?ing.unidad:""):(sub?sub.u:"")} × {fmt(cu)}</span><span style={{color:MUT,fontSize:11}}>{pct(pp)}</span></Row>
+                <Row><span style={{color:MUT,fontSize:11}}>{l.q} {isI?(ing?ing.unidad:""):(sub?sub.u:"")} x {fm(cu)}</span><span style={{color:MUT,fontSize:11}}>{pc(pp)}</span></Row>
               </div>
             );
           })}
@@ -397,12 +688,10 @@ function PorPlatillo({recs,alm,subs}){
 }
 
 function Movimientos({movs,setMovs,alm,setAlm}){
-  const [show,setShow]=useState(false);
-  const [saving,setSaving]=useState(false);
+  const [show,setShow]=useState(false),[saving,setSaving]=useState(false);
   const [f,setF]=useState({ingId:"",tipo:"ENTRADA",qty:"",resp:"",obs:""});
-
   async function save(){
-    if(!f.ingId||!f.qty)return;setSaving(true);
+    if(!f.ingId||!f.qty)return; setSaving(true);
     try{
       const q=f.tipo==="SALIDA"?-Math.abs(+f.qty):+f.qty;
       const obj={fecha:hoy(),ing_id:f.ingId,tipo:f.tipo,qty:q,responsable:f.resp,obs:f.obs};
@@ -410,312 +699,388 @@ function Movimientos({movs,setMovs,alm,setAlm}){
       const saved=Array.isArray(res)?res[0]:res;
       setMovs(prev=>[...prev,{id:saved.id,fecha:saved.fecha,ingId:saved.ing_id,tipo:saved.tipo,qty:saved.qty,resp:saved.responsable,obs:saved.obs}]);
       const ing=alm.find(a=>a.id===f.ingId);
-      if(ing){
-        const newStock=Math.max(0,Number(ing.stock)+q);
-        await sb("ingredientes?id=eq."+f.ingId,{method:"PATCH",body:JSON.stringify({stock:newStock})});
-        setAlm(prev=>prev.map(a=>a.id===f.ingId?{...a,stock:newStock}:a));
-      }
+      if(ing){const ns=Math.max(0,ing.stock+q);await sb("ingredientes?id=eq."+f.ingId,{method:"PATCH",body:JSON.stringify({stock:ns})});setAlm(prev=>prev.map(a=>a.id===f.ingId?{...a,stock:ns}:a));}
       setF({ingId:"",tipo:"ENTRADA",qty:"",resp:"",obs:""});setShow(false);
-    }catch(e){alert("Error: "+e.message);}
-    finally{setSaving(false);}
+    }catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
   }
-
   return(
     <div>
       <Btn onClick={()=>setShow(!show)} style={{width:"100%",marginBottom:14}}>+ Registrar Movimiento</Btn>
-      {show&&<Box bc={BORD} style={{marginBottom:14}}>
-        <p style={{fontWeight:700,fontSize:13,color:TEXT,marginBottom:10}}>Nuevo Movimiento</p>
+      {show&&<Box bc={ACC} style={{marginBottom:14}}>
+        <p style={{fontWeight:700,fontSize:13,color:ACC,marginBottom:10}}>Nuevo Movimiento</p>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-          <Sel value={f.ingId} onChange={v=>setF({...f,ingId:v})} style={{gridColumn:"1 / -1"}}><option value="">Selecciona ingrediente...</option>{alm.map(a=><option key={a.id} value={a.id}>{a.id} — {a.nombre}</option>)}</Sel>
+          <Sel value={f.ingId} onChange={v=>setF({...f,ingId:v})} style={{gridColumn:"1 / -1"}}><option value="">Selecciona ingrediente...</option>{alm.map(a=><option key={a.id} value={a.id}>{a.id} - {a.nombre}</option>)}</Sel>
           <Sel value={f.tipo} onChange={v=>setF({...f,tipo:v})}><option>ENTRADA</option><option>SALIDA</option><option>MERMA</option><option>AJUSTE</option></Sel>
           <Fld value={f.qty} onChange={v=>setF({...f,qty:v})} placeholder="Cantidad" type="number"/>
           <Fld value={f.resp} onChange={v=>setF({...f,resp:v})} placeholder="Responsable"/>
           <Fld value={f.obs} onChange={v=>setF({...f,obs:v})} placeholder="Observaciones" style={{gridColumn:"1 / -1"}}/>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <Btn color={ACC} onClick={save} style={{opacity:saving?0.5:1}}>{saving?"Guardando...":"Guardar"}</Btn>
-          <Btn outline onClick={()=>setShow(false)}>Cancelar</Btn>
-        </div>
+        <div style={{display:"flex",gap:8}}><Btn color={GREEN} onClick={save} style={{opacity:saving?0.5:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn outline onClick={()=>setShow(false)}>Cancelar</Btn></div>
       </Box>}
       {[...movs].reverse().map(m=>{
         const ing=alm.find(a=>a.id===m.ingId),en=m.tipo==="ENTRADA";
-        return(
-          <Box key={m.id} bc={en?BORD:m.tipo==="MERMA"?YEL:RED} style={{marginBottom:8}}>
-            <Row style={{marginBottom:4}}>
-              <div><div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}><Tag color={en?GREEN:m.tipo==="MERMA"?YEL:RED}>{m.tipo}</Tag><span style={{fontWeight:700,fontSize:13}}>{ing?ing.nombre:m.ingId}</span></div><p style={{color:MUT,fontSize:11}}>{m.fecha}{m.resp?" · "+m.resp:""}</p></div>
-              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:14,color:en?GREEN:RED}}>{en?"+":""}{m.qty} {ing?ing.unidad:""}</p><p style={{color:MUT,fontSize:11}}>{fmt(Math.abs(m.qty)*(ing?ing.precio:0))}</p></div>
-            </Row>
-            {m.obs&&<p style={{color:MUT,fontSize:11,marginTop:2}}>{m.obs}</p>}
-          </Box>
-        );
+        return(<Box key={m.id} bc={en?GREEN:m.tipo==="MERMA"?YEL:RED} style={{marginBottom:8}}>
+          <Row style={{marginBottom:4}}>
+            <div><div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}><Tag color={en?GREEN:m.tipo==="MERMA"?YEL:RED}>{m.tipo}</Tag><span style={{fontWeight:700,fontSize:13}}>{ing?ing.nombre:m.ingId}</span></div><p style={{color:MUT,fontSize:11}}>{m.fecha}{m.resp?" - "+m.resp:""}</p></div>
+            <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:14,color:en?GREEN:RED}}>{en?"+":""}{m.qty} {ing?ing.unidad:""}</p><p style={{color:MUT,fontSize:11}}>{fm(Math.abs(m.qty)*(ing?ing.precio:0))}</p></div>
+          </Row>
+          {m.obs&&<p style={{color:MUT,fontSize:11}}>{m.obs}</p>}
+        </Box>);
       })}
     </div>
   );
 }
 
+const PF='Eres experto en facturas de restaurante. Analiza la imagen y extrae todos los productos. Responde SOLO con JSON valido sin texto extra. Estructura: {"proveedor":"string","fecha":"string","productos":[{"nombre":"string","cantidad":1,"unidad":"kg","precio_unitario":0,"precio_total":0,"categoria":"Carnes"}],"total_factura":0}';
+
 function Scanner({alm,setAlm}){
-  const [img,setImg]=useState(null),[b64,setB64]=useState(null),[loading,setLoading]=useState(false);
+  const [img,setImg]=useState(null),[b,setB]=useState(null),[loading,setLoading]=useState(false);
   const [result,setResult]=useState(null),[pending,setPending]=useState([]),[error,setError]=useState(null),[applied,setApplied]=useState([]);
-  const [mimeType,setMimeType]=useState("image/jpeg");
-  const fRef=useRef(),cRef=useRef();
-
-  function toB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
-
-  async function handleFile(file){
-    if(!file)return;
-    setImg(URL.createObjectURL(file));setResult(null);setError(null);setPending([]);
-    setMimeType(file.type||"image/jpeg");setB64(await toB64(file));
-  }
-
+  const [mime,setMime]=useState("image/jpeg");
+  const fR=useRef(),cR=useRef();
+  function hFile(file){if(!file)return;setImg(URL.createObjectURL(file));setResult(null);setError(null);setPending([]);setMime(file.type||"image/jpeg");b64file(file).then(setB);}
   async function analyze(){
-    if(!b64)return;setLoading(true);setError(null);
+    if(!b)return;setLoading(true);setError(null);
     try{
-      const resp=await fetch(RAILWAY_URL+"/scan-factura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_base64:b64,media_type:mimeType})});
-      if(!resp.ok)throw new Error("Error "+resp.status+" del servidor");
+      const resp=await fetch(RAILWAY_URL+"/scan-factura",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_base64:b,media_type:mime})});
+      if(!resp.ok)throw new Error("Error "+resp.status);
       const parsed=await resp.json();
       if(parsed.error)throw new Error(parsed.error);
-      const upd=parsed.productos.map(p=>{const m=alm.find(a=>a.nombre.toLowerCase().split(" ")[0]===p.nombre.toLowerCase().split(" ")[0]);return{...p,matched:m||null,action:m?(m.precio!==p.precio_unitario?"update":"same"):"new",tempId:"ING"+String(uid()).padStart(3,"0"),selected:true};});
+      const upd=parsed.productos.map(p=>{const m=alm.find(a=>a.nombre.toLowerCase().split(" ")[0]===p.nombre.toLowerCase().split(" ")[0]);return{...p,matched:m||null,action:m?(m.precio!==p.precio_unitario?"update":"same"):"new",tid:"ING"+String(uid()).padStart(3,"0"),sel:true};});
       setResult(parsed);setPending(upd);
-    }catch(e){setError("Error: "+e.message);}
-    finally{setLoading(false);}
+    }catch(e){setError("Error: "+e.message);}finally{setLoading(false);}
   }
-
   async function apply(){
-    const ta=pending.filter(u=>u.selected&&u.action!=="same"),log=[];
-    for(const x of ta){
-      try{
-        if(x.action==="update"&&x.matched){
-          await sb("ingredientes?id=eq."+x.matched.id,{method:"PATCH",body:JSON.stringify({precio:x.precio_unitario,prov:result.proveedor,updated:hoy()})});
-          setAlm(prev=>prev.map(a=>a.id===x.matched.id?{...a,precio:x.precio_unitario,prov:result.proveedor,updated:hoy()}:a));
-          log.push({t:"u",n:x.matched.nombre,d:x.matched.precio,a:x.precio_unitario});
-        }else if(x.action==="new"){
-          const obj={id:x.tempId,nombre:x.nombre,cat:x.categoria||"Otro",unidad:x.unidad,precio:x.precio_unitario,stock:x.cantidad,min:0,max:x.cantidad*3,prov:result.proveedor,updated:hoy()};
-          await sb("ingredientes",{method:"POST",body:JSON.stringify(obj)});
-          setAlm(prev=>[...prev,obj]);
-          log.push({t:"n",n:x.nombre,p:x.precio_unitario});
-        }
-      }catch(e){console.error(e);}
-    }
+    const ta=pending.filter(u=>u.sel&&u.action!=="same"),log=[];
+    for(const x of ta){try{
+      if(x.action==="update"&&x.matched){await sb("ingredientes?id=eq."+x.matched.id,{method:"PATCH",body:JSON.stringify({precio:x.precio_unitario,prov:result.proveedor,updated:hoy()})});setAlm(prev=>prev.map(a=>a.id===x.matched.id?{...a,precio:x.precio_unitario,prov:result.proveedor,updated:hoy()}:a));log.push({t:"u",n:x.matched.nombre,d:x.matched.precio,a:x.precio_unitario});}
+      else if(x.action==="new"){const obj={id:x.tid,nombre:x.nombre,cat:x.categoria||"Otro",unidad:x.unidad,precio:x.precio_unitario,stock:x.cantidad,min:0,max:x.cantidad*3,prov:result.proveedor,updated:hoy()};await sb("ingredientes",{method:"POST",body:JSON.stringify(obj)});setAlm(prev=>[...prev,obj]);log.push({t:"n",n:x.nombre,p:x.precio_unitario});}
+    }catch(e){console.error(e);}}
     setApplied(log);setPending([]);setResult(null);setImg(null);
   }
-
   return(
     <div>
-      {applied.length>0&&<Box bc={BORD} style={{marginBottom:14}}><p style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>{applied.length} cambios aplicados</p>{applied.map((a,i)=><p key={i} style={{color:GREEN,fontSize:12,marginTop:2}}>{a.t==="u"?"↑ "+a.n+": $"+a.d+" → $"+a.a:"+ "+a.n+" ($"+a.p+")"}</p>)}</Box>}
+      {applied.length>0&&<Box bc={GREEN} style={{marginBottom:14}}><p style={{color:GREEN,fontWeight:700,fontSize:13,marginBottom:6}}>{applied.length} cambios aplicados</p>{applied.map((a,i)=><p key={i} style={{color:"#86EFAC",fontSize:12,marginTop:2}}>{a.t==="u"?"Actualizado "+a.n+": $"+a.d+" -> $"+a.a:"Agregado "+a.n+" ($"+a.p+")"}</p>)}</Box>}
       {!img&&<div>
-        <div onClick={()=>fRef.current.click()} style={{border:"1px dashed "+BORD,borderRadius:10,padding:"36px 20px",textAlign:"center",cursor:"pointer",background:CARD,marginBottom:10}}>
-          <p style={{fontSize:36,marginBottom:10}}>📄</p>
-          <p style={{fontWeight:700,fontSize:15,marginBottom:4,letterSpacing:"-0.01em"}}>Subir imagen de factura</p>
-          <p style={{color:MUT,fontSize:12}}>Ticket, factura o nota de entrega</p>
+        <div onClick={()=>fR.current.click()} style={{border:"2px dashed "+BORD,borderRadius:14,padding:"36px 20px",textAlign:"center",cursor:"pointer",background:CARD,marginBottom:10}}>
+          <p style={{fontSize:40,marginBottom:8}}>📄</p><p style={{fontWeight:700,fontSize:15,marginBottom:4}}>Subir imagen de factura</p><p style={{color:MUT,fontSize:12}}>Ticket, factura o nota de entrega</p>
         </div>
-        <input ref={fRef} type="file" accept="image/*" onChange={e=>handleFile(e.target.files[0])} style={{display:"none"}}/>
-        <Btn onClick={()=>cRef.current.click()} style={{width:"100%",padding:14,fontSize:15}}>Tomar foto con cámara</Btn>
-        <input ref={cRef} type="file" accept="image/*" capture="environment" onChange={e=>handleFile(e.target.files[0])} style={{display:"none"}}/>
+        <input ref={fR} type="file" accept="image/*" onChange={e=>hFile(e.target.files[0])} style={{display:"none"}}/>
+        <Btn onClick={()=>cR.current.click()} style={{width:"100%",padding:14,fontSize:15}}>Tomar foto con cámara</Btn>
+        <input ref={cR} type="file" accept="image/*" capture="environment" onChange={e=>hFile(e.target.files[0])} style={{display:"none"}}/>
       </div>}
       {img&&!loading&&!result&&<div>
-        <div style={{borderRadius:10,overflow:"hidden",marginBottom:12,border:"1px solid "+BORD}}><img src={img} alt="factura" style={{width:"100%",maxHeight:300,objectFit:"contain",background:"#000"}}/></div>
-        <div style={{display:"flex",gap:8}}><Btn outline onClick={()=>{setImg(null);setB64(null);}} style={{flex:1}}>Cambiar</Btn><Btn style={{flex:2}} onClick={analyze}>Analizar con IA</Btn></div>
+        <div style={{borderRadius:12,overflow:"hidden",marginBottom:12,border:"1px solid "+BORD}}><img src={img} alt="f" style={{width:"100%",maxHeight:300,objectFit:"contain",background:"#000"}}/></div>
+        <div style={{display:"flex",gap:8}}><Btn outline onClick={()=>{setImg(null);setB(null);}} style={{flex:1}}>Cambiar</Btn><Btn style={{flex:2}} onClick={analyze}>Analizar con IA</Btn></div>
       </div>}
-      {loading&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:32}}><div style={{width:36,height:36,borderRadius:"50%",border:"2px solid "+BORD,borderTop:"2px solid "+ACC,animation:"spin 0.7s linear infinite"}}/><p style={{color:MUT,fontSize:13}}>Analizando...</p></div>}
+      {loading&&<Ld/>}
       {error&&<Box bc={RED}><p style={{color:RED,fontSize:13}}>{error}</p></Box>}
       {result&&pending.length>0&&<div>
-        <Box style={{marginBottom:12}}>
-          <Row style={{marginBottom:6}}><p style={{fontWeight:700,fontSize:14,letterSpacing:"-0.01em"}}>{result.proveedor}</p>{result.fecha&&<Tag color={BLUE}>{result.fecha}</Tag>}</Row>
-          <div style={{display:"flex",gap:14}}><div><p style={{color:MUT,fontSize:10}}>Productos</p><p style={{fontWeight:700,fontSize:18,letterSpacing:"-0.02em"}}>{result.productos.length}</p></div>{result.total_factura?<div><p style={{color:MUT,fontSize:10}}>Total</p><p style={{fontWeight:700,fontSize:18,color:GREEN,letterSpacing:"-0.02em"}}>{fmt(result.total_factura)}</p></div>:null}</div>
-        </Box>
+        <Box style={{marginBottom:12}}><Row style={{marginBottom:6}}><p style={{fontWeight:700,fontSize:14}}>{result.proveedor}</p>{result.fecha&&<Tag color={BLUE}>{result.fecha}</Tag>}</Row><div style={{display:"flex",gap:14}}><div><p style={{color:MUT,fontSize:10}}>Productos</p><p style={{fontWeight:700,fontSize:18,color:ACC}}>{result.productos.length}</p></div>{result.total_factura?<div><p style={{color:MUT,fontSize:10}}>Total</p><p style={{fontWeight:700,fontSize:18,color:GREEN}}>{fm(result.total_factura)}</p></div>:null}</div></Box>
         {pending.map((u,i)=>(
-          <Box key={i} bc={u.action==="new"?GREEN:u.action==="update"?BORD:BORD} style={{marginBottom:8,opacity:u.action==="same"?0.4:1,cursor:u.action!=="same"?"pointer":"default"}} onClick={()=>{if(u.action!=="same")setPending(p=>p.map((x,j)=>j===i?{...x,selected:!x.selected}:x));}}>
+          <Box key={i} bc={u.action==="new"?GREEN:BORD} style={{marginBottom:8,opacity:u.action==="same"?0.5:1,cursor:u.action!=="same"?"pointer":"default"}} onClick={()=>{if(u.action!=="same")setPending(p=>p.map((x,j)=>j===i?{...x,sel:!x.sel}:x));}}>
             <Row style={{marginBottom:u.action!=="same"?6:0}}>
               <div style={{display:"flex",gap:8,alignItems:"flex-start",flex:1}}>
-                {u.action!=="same"&&<div style={{width:18,height:18,borderRadius:4,background:u.selected?ACC:SURF,border:"1px solid "+(u.selected?ACC:MUT),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:BG,flexShrink:0,marginTop:2}}>{u.selected?"✓":""}</div>}
+                {u.action!=="same"&&<div style={{width:18,height:18,borderRadius:4,background:u.sel?ACC:SURF,border:"2px solid "+(u.sel?ACC:MUT),display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0,marginTop:2}}>{u.sel?"✓":""}</div>}
                 <div><p style={{fontWeight:700,fontSize:13,marginBottom:4}}>{u.nombre}</p><Tag color={catC(u.categoria||"Otro")}>{u.categoria}</Tag></div>
               </div>
-              <div style={{textAlign:"right",marginLeft:8}}><p style={{fontWeight:800,fontSize:14}}>{fmt(u.precio_unitario)}</p><p style={{color:MUT,fontSize:11}}>/{u.unidad}</p></div>
+              <div style={{textAlign:"right",marginLeft:8}}><p style={{fontWeight:800,fontSize:14,color:u.action==="update"?ACC:TEXT}}>{fm(u.precio_unitario)}</p><p style={{color:MUT,fontSize:11}}>/{u.unidad}</p></div>
             </Row>
-            {u.action==="update"&&u.matched&&<div style={{background:SURF,borderRadius:6,padding:"6px 10px",display:"flex",justifyContent:"space-between"}}><span style={{color:MUT,fontSize:11}}>Actual <span style={{color:TEXT}}>${u.matched.precio}</span></span><span style={{color:u.precio_unitario>u.matched.precio?RED:GREEN,fontSize:11,fontWeight:700}}>{u.precio_unitario>u.matched.precio?"↑":"↓"} {Math.abs(((u.precio_unitario-u.matched.precio)/u.matched.precio)*100).toFixed(1)}%</span></div>}
-            {u.action==="new"&&<div style={{background:GREEN+"15",borderRadius:6,padding:"4px 8px"}}><span style={{color:GREEN,fontSize:11}}>Se agrega al almacén</span></div>}
+            {u.action==="update"&&u.matched&&<div style={{background:SURF,borderRadius:8,padding:"6px 10px",display:"flex",justifyContent:"space-between"}}><span style={{color:MUT,fontSize:11}}>Actual: <span style={{color:TEXT}}>${u.matched.precio}</span></span><span style={{color:u.precio_unitario>u.matched.precio?RED:GREEN,fontSize:11,fontWeight:700}}>{u.precio_unitario>u.matched.precio?"Sube":"Baja"} {Math.abs(((u.precio_unitario-u.matched.precio)/u.matched.precio)*100).toFixed(1)}%</span></div>}
+            {u.action==="new"&&<div style={{background:GREEN+"22",borderRadius:8,padding:"5px 10px"}}><span style={{color:GREEN,fontSize:11}}>Se agregará al almacén</span></div>}
           </Box>
         ))}
         <div style={{position:"sticky",bottom:16,marginTop:14}}>
-          <Btn onClick={apply} style={{width:"100%",padding:16,fontSize:15}}>Aplicar {pending.filter(u=>u.selected&&u.action!=="same").length} cambios</Btn>
+          <Btn color={GREEN} onClick={apply} style={{width:"100%",padding:16,fontSize:15}}>Aplicar {pending.filter(u=>u.sel&&u.action!=="same").length} cambios al almacen</Btn>
         </div>
       </div>}
     </div>
   );
 }
 
-function Asistente({alm,subs,recs,movs}){
-  const [msgs,setMsgs]=useState([{role:"assistant",content:"Hola, soy el asistente de Galea. Puedo ayudarte a analizar tu inventario, food cost, rentabilidad y más. ¿Qué necesitas?"}]);
-  const [input,setInput]=useState("");
-  const [loading,setLoading]=useState(false);
+function Asistente({alm,subs,recs,movs,user}){
+  const [msgs,setMsgs]=useState([{role:"assistant",content:"Hola "+user.nombre+", soy el asistente de Galea. ¿En qué puedo ayudarte?"}]);
+  const [input,setInput]=useState(""),[loading,setLoading]=useState(false);
   const bottomRef=useRef();
-
   useEffect(()=>{if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
-
-  function buildContext(){
-    const alertas=alm.filter(a=>stSt(a)==="reponer");
-    const topRec=recs.map(r=>{const c=recCosto(r,alm,subs),fc=r.precio>0?c/r.precio:0;return{n:r.nombre,fc:fc.toFixed(3),mg:(r.precio-c).toFixed(2),precio:r.precio};}).sort((a,b)=>a.fc-b.fc);
-    const valAlm=alm.reduce((s,a)=>s+a.precio*a.stock,0);
-    return `Eres el asistente del restaurante Galea. Responde en español, de forma concisa y útil.
-
-CONTEXTO ACTUAL:
-- Ingredientes en almacén: ${alm.length} (valor total: $${valAlm.toFixed(2)})
-- Sub-recetas: ${subs.length}
-- Platillos activos: ${recs.length}
-- Alertas de stock bajo: ${alertas.length} ingredientes (${alertas.map(a=>a.nombre).join(", ")||"ninguno"})
-- Movimientos registrados: ${movs.length}
-
-TOP 5 PLATILLOS POR RENTABILIDAD:
-${topRec.slice(0,5).map((r,i)=>`${i+1}. ${r.n} — FC ${(r.fc*100).toFixed(1)}% — Margen $${r.mg}`).join("\n")}
-
-PEOR FC:
-${topRec.slice(-3).reverse().map(r=>`- ${r.n} FC ${(r.fc*100).toFixed(1)}%`).join("\n")}`;
+  function ctx(){
+    const alertas=alm.filter(a=>stSt(a)==="rep");
+    const top=recs.map(r=>{const c=recCosto(r,alm,subs),fc=r.precio>0?c/r.precio:0;return{n:r.nombre,fc,mg:(r.precio-c).toFixed(2)};}).sort((a,b)=>a.fc-b.fc);
+    const val=alm.reduce((s,a)=>s+a.precio*a.stock,0);
+    return `Eres el asistente del restaurante Galea. Responde en español, conciso y útil.
+Usuario: ${user.nombre} (${user.rol}). Ingredientes: ${alm.length} (valor $${val.toFixed(2)}). Sub-recetas: ${subs.length}. Platillos: ${recs.length}. Alertas: ${alertas.length} (${alertas.map(a=>a.nombre).join(", ")||"ninguno"}). Movimientos: ${movs.length}.
+TOP 5: ${top.slice(0,5).map((r,i)=>`${i+1}. ${r.n} FC ${(r.fc*100).toFixed(1)}% Margen $${r.mg}`).join(" | ")}
+PEOR: ${top.slice(-3).reverse().map(r=>`${r.n} ${(r.fc*100).toFixed(1)}%`).join(" | ")}`;
   }
-
   async function send(){
-    const txt=input.trim();
-    if(!txt||loading)return;
-    const newMsgs=[...msgs,{role:"user",content:txt}];
-    setMsgs(newMsgs);setInput("");setLoading(true);
+    const txt=input.trim();if(!txt||loading)return;
+    const nm=[...msgs,{role:"user",content:txt}];
+    setMsgs(nm);setInput("");setLoading(true);
     try{
-      const resp=await fetch(RAILWAY_URL+"/chat",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({system:buildContext(),messages:newMsgs.map(m=>({role:m.role,content:m.content}))})
-      });
+      const resp=await fetch(RAILWAY_URL+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:ctx(),messages:nm.map(m=>({role:m.role,content:m.content}))})});
       if(!resp.ok)throw new Error("Error "+resp.status);
       const data=await resp.json();
       setMsgs(prev=>[...prev,{role:"assistant",content:data.content}]);
-    }catch(e){setMsgs(prev=>[...prev,{role:"assistant",content:"Error al conectar con el asistente. Verifica que el backend esté activo."}]);}
+    }catch(e){setMsgs(prev=>[...prev,{role:"assistant",content:"Error de conexión. Verifica el backend."}]);}
     finally{setLoading(false);}
   }
-
   return(
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 140px)"}}>
       <div style={{flex:1,overflowY:"auto",paddingBottom:12}}>
         {msgs.map((m,i)=>(
           <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:10}}>
-            <div style={{maxWidth:"82%",padding:"10px 13px",borderRadius:m.role==="user"?"12px 12px 3px 12px":"12px 12px 12px 3px",background:m.role==="user"?ACC:CARD,color:m.role==="user"?BG:TEXT,fontSize:13,lineHeight:1.5,border:m.role==="user"?"none":"1px solid "+BORD,whiteSpace:"pre-wrap"}}>
-              {m.content}
-            </div>
+            <div style={{maxWidth:"82%",padding:"10px 13px",borderRadius:m.role==="user"?"12px 12px 3px 12px":"12px 12px 12px 3px",background:m.role==="user"?ACC:CARD,color:m.role==="user"?"#000":TEXT,fontSize:13,lineHeight:1.5,border:m.role==="user"?"none":"1px solid "+BORD,whiteSpace:"pre-wrap"}}>{m.content}</div>
           </div>
         ))}
-        {loading&&<div style={{display:"flex",justifyContent:"flex-start",marginBottom:10}}>
-          <div style={{padding:"10px 14px",borderRadius:"12px 12px 12px 3px",background:CARD,border:"1px solid "+BORD}}>
-            <div style={{display:"flex",gap:5,alignItems:"center"}}>
-              {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:MUT,animation:"fadein 0.6s ease "+i*0.2+"s infinite alternate"}}/>)}
-            </div>
-          </div>
-        </div>}
+        {loading&&<div style={{display:"flex",justifyContent:"flex-start",marginBottom:10}}><div style={{padding:"10px 14px",borderRadius:"12px 12px 12px 3px",background:CARD,border:"1px solid "+BORD}}><div style={{display:"flex",gap:5}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:MUT,animation:"fadein 0.6s "+i*0.2+"s infinite alternate"}}/>)}</div></div></div>}
         <div ref={bottomRef}/>
       </div>
       <div style={{display:"flex",gap:8,paddingTop:10,borderTop:"1px solid "+BORD}}>
-        <input
-          value={input}
-          onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} }}
-          placeholder="Pregunta sobre inventario, costos, recetas..."
-          style={{flex:1,background:SURF,border:"1px solid "+BORD,borderRadius:8,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none"}}
-        />
-        <button onClick={send} disabled={loading||!input.trim()} style={{background:input.trim()&&!loading?ACC:SURF,border:"none",borderRadius:8,padding:"10px 16px",color:input.trim()&&!loading?BG:MUT,fontWeight:700,fontSize:13,cursor:input.trim()&&!loading?"pointer":"default"}}>↑</button>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Pregunta sobre inventario, costos, recetas..." style={{flex:1,background:SURF,border:"1px solid "+BORD,borderRadius:8,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none"}}/>
+        <button onClick={send} disabled={loading||!input.trim()} style={{background:input.trim()&&!loading?ACC:SURF,border:"none",borderRadius:8,padding:"10px 16px",color:input.trim()&&!loading?"#000":MUT,fontWeight:700,fontSize:13,cursor:input.trim()&&!loading?"pointer":"default"}}>↑</button>
       </div>
     </div>
   );
 }
 
-const TABS=[
-  {id:"dashboard",icon:"◈",label:"Dashboard"},
-  {id:"almacen",icon:"▦",label:"Almacén"},
-  {id:"subs",icon:"◉",label:"Sub-Rec."},
-  {id:"recetas",icon:"▤",label:"Recetas"},
-  {id:"platillo",icon:"◎",label:"Platillo"},
-  {id:"scanner",icon:"⊡",label:"Facturas"},
-  {id:"movs",icon:"↕",label:"Movim."},
-  {id:"ai",icon:"◈",label:"Asistente"},
+function Usuarios(){
+  const [users,setUsers]=useState([]),[loading,setLoading]=useState(true),[show,setShow]=useState(false);
+  const [editing,setEditing]=useState(null),[saving,setSaving]=useState(false);
+  const [f,setF]=useState({nombre:"",password:"",rol:"chef",activo:true});
+  const [ef,setEf]=useState({password:"",rol:"chef",activo:true});
+  useEffect(()=>{sb("usuarios?select=*&order=created_at").then(rows=>{setUsers(rows||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+  async function crear(){
+    if(!f.nombre||!f.password)return;setSaving(true);
+    try{const res=await sb("usuarios",{method:"POST",body:JSON.stringify({nombre:f.nombre.trim(),password:f.password,rol:f.rol,activo:f.activo})});const s=Array.isArray(res)?res[0]:res;setUsers(prev=>[...prev,s]);setF({nombre:"",password:"",rol:"chef",activo:true});setShow(false);}
+    catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
+  }
+  async function guardar(u){
+    setSaving(true);
+    try{const upd={rol:ef.rol,activo:ef.activo};if(ef.password)upd.password=ef.password;await sb("usuarios?id=eq."+u.id,{method:"PATCH",body:JSON.stringify(upd)});setUsers(prev=>prev.map(x=>x.id===u.id?{...x,...upd}:x));setEditing(null);}
+    catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
+  }
+  async function eliminar(id){
+    if(!confirm("¿Eliminar este usuario?"))return;setSaving(true);
+    try{await sb("usuarios?id=eq."+id,{method:"DELETE",prefer:"return=minimal"});setUsers(prev=>prev.filter(x=>x.id!==id));setEditing(null);}
+    catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
+  }
+  if(loading)return <div style={{textAlign:"center",padding:40,color:MUT}}>Cargando...</div>;
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <p style={{color:MUT,fontSize:11}}>{users.length} usuarios</p>
+        <Btn sm onClick={()=>setShow(!show)}>+ Nuevo</Btn>
+      </div>
+      {show&&<Box bc={ACC} style={{marginBottom:14}}>
+        <p style={{fontWeight:700,fontSize:13,marginBottom:12}}>Nuevo Usuario</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <Fld value={f.nombre} onChange={v=>setF({...f,nombre:v})} placeholder="Nombre *"/>
+          <Fld value={f.password} onChange={v=>setF({...f,password:v})} placeholder="Contraseña *" type="password"/>
+          <Sel value={f.rol} onChange={v=>setF({...f,rol:v})}><option value="admin">Admin — Todo</option><option value="chef">Chef — Cocina</option><option value="compras">Compras — Inventario</option><option value="vista">Vista — Solo lectura</option></Sel>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:SURF,borderRadius:8,padding:"8px 10px",cursor:"pointer"}} onClick={()=>setF({...f,activo:!f.activo})}>
+            <div style={{width:18,height:18,borderRadius:4,background:f.activo?ACC:SURF,border:"1px solid "+(f.activo?ACC:BORD),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#000"}}>{f.activo?"✓":""}</div>
+            <span style={{fontSize:12,color:f.activo?TEXT:MUT}}>Activo</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}><Btn color={GREEN} onClick={crear} style={{opacity:saving?0.5:1}}>{saving?"Guardando...":"Crear"}</Btn><Btn outline onClick={()=>setShow(false)}>Cancelar</Btn></div>
+      </Box>}
+      {users.map(u=>{
+        const isEdit=editing===u.id;
+        return(<Box key={u.id} bc={isEdit?ACC:BORD} style={{marginBottom:8,opacity:u.activo?1:0.5}}>
+          {isEdit?<div>
+            <Row style={{marginBottom:12}}><div><p style={{fontWeight:700,fontSize:14}}>{u.nombre}</p><p style={{color:MUT,fontSize:11}}>Editando acceso</p></div><Btn sm outline onClick={()=>setEditing(null)}>Cancelar</Btn></Row>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              <Fld value={ef.password} onChange={v=>setEf({...ef,password:v})} placeholder="Nueva contraseña (opcional)" type="password"/>
+              <Sel value={ef.rol} onChange={v=>setEf({...ef,rol:v})}><option value="admin">Admin</option><option value="chef">Chef</option><option value="compras">Compras</option><option value="vista">Vista</option></Sel>
+              <div style={{display:"flex",alignItems:"center",gap:8,background:SURF,borderRadius:8,padding:"8px 10px",cursor:"pointer",gridColumn:"1/-1"}} onClick={()=>setEf({...ef,activo:!ef.activo})}>
+                <div style={{width:18,height:18,borderRadius:4,background:ef.activo?GREEN:SURF,border:"1px solid "+(ef.activo?GREEN:BORD),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#000"}}>{ef.activo?"✓":""}</div>
+                <span style={{fontSize:12,color:ef.activo?TEXT:MUT}}>{ef.activo?"Usuario activo":"Inactivo — no puede entrar"}</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn color={ACC} onClick={()=>guardar(u)} style={{flex:2,opacity:saving?0.5:1,color:"#000"}}>{saving?"Guardando...":"Guardar"}</Btn>
+              {u.nombre!=="admin"&&<Btn color={RED} onClick={()=>eliminar(u.id)} style={{flex:1,opacity:saving?0.5:1}}>Eliminar</Btn>}
+            </div>
+          </div>:(
+            <div onClick={()=>{setEditing(u.id);setEf({password:"",rol:u.rol,activo:u.activo});}} style={{cursor:"pointer"}}>
+              <Row><div><p style={{fontWeight:700,fontSize:14,marginBottom:6}}>{u.nombre}</p><div style={{display:"flex",gap:6}}><Tag color={ROL_COLOR[u.rol]||BLUE}>{u.rol}</Tag><Tag color={u.activo?GREEN:RED}>{u.activo?"Activo":"Inactivo"}</Tag></div></div><p style={{color:MUT,fontSize:11}}>Editar →</p></Row>
+            </div>
+          )}
+        </Box>);
+      })}
+    </div>
+  );
+}
+
+const TABS_COCINA = [
+  {id:"dashboard", ic:"📊", lb:"Dashboard"},
+  {id:"ventas",    ic:"💰", lb:"Ventas"},
+  {id:"almacen",   ic:"🏪", lb:"Almacen"},
+  {id:"subs",      ic:"🧪", lb:"Sub-Rec."},
+  {id:"recetas",   ic:"📋", lb:"Recetas"},
+  {id:"platillo",  ic:"🍽", lb:"Platillo"},
+  {id:"scanner",   ic:"📷", lb:"Facturas"},
+  {id:"movs",      ic:"📦", lb:"Movim."},
+  {id:"ai",        ic:"✦",  lb:"Asist."},
 ];
 
-function mapAlm(row){return{id:row.id,nombre:row.nombre,cat:row.cat,unidad:row.unidad,precio:Number(row.precio),stock:Number(row.stock),min:Number(row.min),max:Number(row.max),prov:row.prov||"",updated:row.updated||null};}
-function mapSub(row,items){return{id:row.id,nombre:row.nombre,tipo:row.tipo,rend:Number(row.rend),u:row.u,ings:items.filter(i=>i.sub_id===row.id).map(i=>({id:i.ing_id,q:Number(i.cantidad)})) };}
-function mapRec(row,lineas){return{id:row.id,nombre:row.nombre,cat:row.cat,precio:Number(row.precio),lineas:lineas.filter(l=>l.rec_id===row.id).map(l=>({t:l.tipo,i:l.ref_id,q:Number(l.cantidad)}))};}
-function mapMov(row){return{id:row.id,fecha:row.fecha,ingId:row.ing_id,tipo:row.tipo,qty:Number(row.qty),resp:row.responsable||"",obs:row.obs||""};}
+function AreaApp({areaId, setArea, alm, setAlm, subs, setSubs, recs, setRecs, movs, setMovs, user}){
+  const info = AREAS.find(a=>a.id===areaId)||{nombre:"Area",icon:"🍽",color:ACC};
+  const [tab,setTab] = useState("dashboard");
+  const [showMenuScan,setShowMenuScan] = useState(false);
+  const al = alm.filter(a=>stSt(a)==="rep").length;
 
-function App(){
-  const [tab,setTab]=useState("dashboard");
-  const [alm,setAlm]=useState([]);
-  const [subs,setSubs]=useState([]);
-  const [recs,setRecs]=useState([]);
-  const [movs,setMovs]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [error,setError]=useState(null);
-
-  useEffect(()=>{
-    async function load(){
-      try{
-        const [almRows,subRows,subItems,recRows,recLineas,movRows]=await Promise.all([
-          sb("ingredientes?select=*&order=id"),
-          sb("sub_recetas?select=*&order=id"),
-          sb("sub_receta_items?select=*"),
-          sb("recetas?select=*&order=id"),
-          sb("receta_lineas?select=*"),
-          sb("movimientos?select=*&order=created_at"),
-        ]);
-        setAlm((almRows||[]).map(mapAlm));
-        setSubs((subRows||[]).map(r=>mapSub(r,subItems||[])));
-        setRecs((recRows||[]).map(r=>mapRec(r,recLineas||[])));
-        setMovs((movRows||[]).map(mapMov));
-      }catch(e){setError("Error cargando datos: "+e.message);}
-      finally{setLoading(false);}
-    }
-    load();
-  },[]);
-
-  const al=alm.filter(a=>stSt(a)==="reponer").length;
-
-  if(loading)return(
-    <div style={{minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-      <div style={{fontFamily:"-apple-system,sans-serif",fontSize:22,fontWeight:800,letterSpacing:"0.15em",color:TEXT}}>GALEA</div>
-      <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid #222",borderTop:"2px solid #fff",animation:"spin 0.7s linear infinite",marginTop:8}}/>
-    </div>
-  );
-
-  if(error)return(
-    <div style={{minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:24}}>
-      <p style={{color:RED,fontWeight:700,textAlign:"center",fontSize:13}}>{error}</p>
-      <button onClick={()=>window.location.reload()} style={{padding:"10px 24px",borderRadius:7,background:ACC,color:BG,border:"none",fontWeight:700,cursor:"pointer"}}>Reintentar</button>
-    </div>
-  );
+  // Filtrar tabs según rol
+  const permitidos = PERMISOS[user.rol]||[];
+  const tabsVisibles = TABS_COCINA.filter(t=>permitidos.includes(t.id)||t.id==="dashboard");
 
   return(
     <div style={{minHeight:"100vh",background:BG,color:TEXT,paddingBottom:80}}>
-      <div style={{background:CARD,borderBottom:"1px solid "+BORD,padding:"14px 16px",position:"sticky",top:0,zIndex:50}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{fontFamily:"-apple-system,sans-serif",fontSize:16,fontWeight:800,letterSpacing:"0.18em",color:TEXT}}>GALEA</div>
-          <div style={{width:1,height:18,background:BORD}}/>
-          <p style={{fontSize:11,color:MUT,letterSpacing:"0.04em"}}>Sistema de gestión</p>
-          {al>0&&<div style={{marginLeft:"auto",background:RED+"18",border:"1px solid "+RED+"60",borderRadius:20,padding:"3px 10px",fontSize:11,color:RED,fontWeight:700}}>⚠ {al}</div>}
+      {/* Header del area */}
+      <div style={{background:"linear-gradient(160deg,#0E1120 0%,#151929 100%)",borderBottom:"1px solid "+BORD,padding:"12px 16px",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setArea(null)} style={{background:"none",border:"none",color:info.color,cursor:"pointer",fontSize:22,padding:"0 6px 0 0",lineHeight:1}}>←</button>
+          <div style={{width:32,height:32,borderRadius:8,background:info.color+"22",border:"1px solid "+info.color+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{info.icon}</div>
+          <div>
+            <h1 style={{fontSize:15,fontWeight:800}}>{info.nombre}</h1>
+            <p style={{fontSize:10,color:MUT}}>Inventario - Recetas - Costos</p>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+            {/* Botón escanear menú */}
+            <button onClick={()=>setShowMenuScan(true)} style={{background:info.color+"22",border:"1px solid "+info.color+"44",borderRadius:8,padding:"5px 10px",color:info.color,fontSize:11,fontWeight:700,cursor:"pointer"}}>📸 Menú</button>
+            {al>0&&<div style={{background:RED+"22",border:"1px solid "+RED,borderRadius:20,padding:"3px 8px",fontSize:10,color:RED,fontWeight:700}}>⚠ {al}</div>}
+          </div>
         </div>
       </div>
+
+      {/* Menu Scanner Modal */}
+      {showMenuScan&&<MenuScanner areaId={areaId} recs={recs} setRecs={setRecs} info={info} onClose={()=>setShowMenuScan(false)}/>}
+
+      {/* Contenido */}
       <div style={{padding:"16px 16px 0"}} className="fade" key={tab}>
-        {tab==="dashboard"&&<Dashboard alm={alm} subs={subs} recs={recs}/>}
-        {tab==="almacen"&&<Almacen alm={alm} setAlm={setAlm}/>}
+        {tab==="dashboard"&&<Dashboard alm={alm} subs={subs} recs={recs} setTab={setTab}/>}
+        {tab==="almacen"&&<Almacen alm={alm} setAlm={setAlm} soloVer={user.rol==="vista"}/>}
         {tab==="subs"&&<SubRecetas subs={subs} alm={alm}/>}
         {tab==="recetas"&&<Recetas recs={recs} alm={alm} subs={subs}/>}
         {tab==="platillo"&&<PorPlatillo recs={recs} alm={alm} subs={subs}/>}
         {tab==="scanner"&&<Scanner alm={alm} setAlm={setAlm}/>}
         {tab==="movs"&&<Movimientos movs={movs} setMovs={setMovs} alm={alm} setAlm={setAlm}/>}
-        {tab==="ai"&&<Asistente alm={alm} subs={subs} recs={recs} movs={movs}/>}
+        {tab==="ai"&&<Asistente alm={alm} subs={subs} recs={recs} movs={movs} user={user}/>}
+        {tab==="ventas"&&<div style={{textAlign:"center",padding:40}}><p style={{fontSize:32,marginBottom:12}}>💰</p><p style={{fontWeight:700,fontSize:16,marginBottom:8}}>Ventas</p><p style={{color:MUT,fontSize:13}}>Módulo disponible próximamente</p></div>}
       </div>
-      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:CARD,borderTop:"1px solid "+BORD,display:"flex",padding:"6px 2px 6px",zIndex:50}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 1px",color:tab===t.id?TEXT:MUT}}>
-            <span style={{fontSize:14,lineHeight:1}}>{t.icon}</span>
-            <span style={{fontSize:8,fontWeight:tab===t.id?700:400,letterSpacing:"0.03em"}}>{t.label}</span>
-            {tab===t.id&&<div style={{width:16,height:1.5,background:ACC,borderRadius:1,marginTop:1}}/>}
+
+      {/* Nav bar */}
+      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:CARD,borderTop:"1px solid "+BORD,display:"flex",padding:"6px 2px",zIndex:50}}>
+        {tabsVisibles.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 1px",color:tab===t.id?info.color:MUT}}>
+            <span style={{fontSize:16}}>{t.ic}</span>
+            <span style={{fontSize:8,fontWeight:tab===t.id?700:500}}>{t.lb}</span>
           </button>
         ))}
       </nav>
     </div>
   );
+}
+
+function AlmacenGlobal({alm,setAlm,setArea}){
+  return(
+    <div style={{minHeight:"100vh",background:BG,color:TEXT,paddingBottom:40}}>
+      <div style={{background:"linear-gradient(160deg,#0E1120 0%,#151929 100%)",borderBottom:"1px solid "+BORD,padding:"12px 16px",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setArea(null)} style={{background:"none",border:"none",color:BLUE,cursor:"pointer",fontSize:22,padding:"0 6px 0 0",lineHeight:1}}>←</button>
+          <div style={{width:32,height:32,borderRadius:8,background:BLUE+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏪</div>
+          <h1 style={{fontSize:15,fontWeight:800}}>Almacen General</h1>
+        </div>
+      </div>
+      <div style={{padding:"16px 16px 0"}}><Almacen alm={alm} setAlm={setAlm}/></div>
+    </div>
+  );
+}
+
+function UsuariosPage({setArea}){
+  return(
+    <div style={{minHeight:"100vh",background:BG,color:TEXT,paddingBottom:40}}>
+      <div style={{background:"linear-gradient(160deg,#0E1120 0%,#151929 100%)",borderBottom:"1px solid "+BORD,padding:"12px 16px",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setArea(null)} style={{background:"none",border:"none",color:PUR,cursor:"pointer",fontSize:22,padding:"0 6px 0 0",lineHeight:1}}>←</button>
+          <div style={{width:32,height:32,borderRadius:8,background:PUR+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>👥</div>
+          <h1 style={{fontSize:15,fontWeight:800}}>Gestión de Usuarios</h1>
+        </div>
+      </div>
+      <div style={{padding:"16px 16px 0"}}><Usuarios/></div>
+    </div>
+  );
+}
+
+function mapAlm(r){return{id:r.id,nombre:r.nombre,cat:r.cat,unidad:r.unidad,precio:Number(r.precio),stock:Number(r.stock),min:Number(r.min),max:Number(r.max),prov:r.prov||"",updated:r.updated||null};}
+function mapSub(r,items){return{id:r.id,nombre:r.nombre,tipo:r.tipo,rend:Number(r.rend),u:r.u,ings:items.filter(i=>i.sub_id===r.id).map(i=>({id:i.ing_id,q:Number(i.cantidad)}))};}
+function mapRec(r,lineas){return{id:r.id,nombre:r.nombre,cat:r.cat,precio:Number(r.precio),lineas:lineas.filter(l=>l.rec_id===r.id).map(l=>({t:l.tipo,i:l.ref_id,q:Number(l.cantidad)}))};}
+function mapMov(r){return{id:r.id,fecha:r.fecha,ingId:r.ing_id,tipo:r.tipo,qty:Number(r.qty),resp:r.responsable||"",obs:r.obs||""};}
+
+function App(){
+  const [user,setUser] = useState(()=>{
+    try{const s=sessionStorage.getItem("galea_user");return s?JSON.parse(s):null;}catch{return null;}
+  });
+  const [area,setArea] = useState(null);
+  const [alm,setAlm] = useState([]);
+  const [subs,setSubs] = useState([]);
+  const [recs,setRecs] = useState([]);
+  const [movs,setMovs] = useState([]);
+  const [dataLoaded,setDataLoaded] = useState(false);
+  const [dataError,setDataError] = useState(null);
+
+  // Cargar datos de Supabase al hacer login
+  useEffect(()=>{
+    if(!user||dataLoaded)return;
+    Promise.all([
+      sb("ingredientes?select=*&order=id"),
+      sb("sub_recetas?select=*&order=id"),
+      sb("sub_receta_items?select=*"),
+      sb("recetas?select=*&order=id"),
+      sb("receta_lineas?select=*"),
+      sb("movimientos?select=*&order=created_at"),
+    ]).then(([almRows,subRows,subItems,recRows,recLineas,movRows])=>{
+      setAlm((almRows||[]).map(mapAlm));
+      setSubs((subRows||[]).map(r=>mapSub(r,subItems||[])));
+      setRecs((recRows||[]).map(r=>mapRec(r,recLineas||[])));
+      setMovs((movRows||[]).map(mapMov));
+      setDataLoaded(true);
+    }).catch(e=>setDataError(e.message));
+  },[user]);
+
+  function logout(){
+    sessionStorage.removeItem("galea_user");
+    setUser(null);setArea(null);setAlm([]);setSubs([]);setRecs([]);setMovs([]);setDataLoaded(false);
+  }
+
+  // Login
+  if(!user)return <Login onLogin={u=>setUser(u)}/>;
+
+  // Loading datos
+  if(!dataLoaded&&!dataError)return(
+    <div style={{minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{width:72,height:72,borderRadius:"50%",background:"linear-gradient(135deg,#F97316,#DC2626)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32}}>🍽</div>
+      <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid #1A2035",borderTop:"2px solid #F97316",animation:"spin 0.7s linear infinite"}}/>
+      <p style={{color:MUT,fontSize:13}}>Cargando datos...</p>
+    </div>
+  );
+
+  if(dataError)return(
+    <div style={{minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:24}}>
+      <p style={{color:RED,fontWeight:700,textAlign:"center"}}>{dataError}</p>
+      <Btn onClick={()=>window.location.reload()}>Reintentar</Btn>
+    </div>
+  );
+
+  // Navegación por area
+  if(area==="almacen_global")return <AlmacenGlobal alm={alm} setAlm={setAlm} setArea={setArea}/>;
+  if(area==="usuarios")return <UsuariosPage setArea={setArea}/>;
+  if(area&&AREAS.find(a=>a.id===area))return(
+    <AreaApp areaId={area} setArea={setArea} alm={alm} setAlm={setAlm} subs={subs} setSubs={setSubs} recs={recs} setRecs={setRecs} movs={movs} setMovs={setMovs} user={user}/>
+  );
+
+  // HomeScreen
+  return <HomeScreen alm={alm} recs={recs} setArea={setArea} user={user} onLogout={logout}/>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
