@@ -43,14 +43,186 @@ const AREAS = [
   {id:"postres", nombre:"Postres", icon:"🍰",  color:"#EC4899", desc:"Postres y reposteria"},
 ];
 
-// Permisos por rol
-const PERMISOS = {
-  admin:   ["home","almacen","subs","recetas","scanner","movs","ai","usuarios"],
-  chef:    ["home","subs","recetas","movs","ai"],
-  compras: ["home","almacen","scanner","movs"],
-  vista:   ["home","recetas"],
+const ROL_COLOR = { admin:"#F1F5F9", chef:"#6EE7B7", compras:"#93C5FD", vista:"#FCD34D", custom:"#C4B5FD" };
+
+// Permisos por defecto si el usuario no tiene permisos configurados
+const DEFAULT_PERMISOS = {
+  areas: ["cocina"],
+  tabs: ["dashboard","recetas"],
+  ver_costos: false,
+  editar_almacen: false,
+  ver_usuarios: false,
 };
-const ROL_COLOR = { admin:"#F1F5F9", chef:"#6EE7B7", compras:"#93C5FD", vista:"#FCD34D" };
+
+function getPermisos(user) {
+  if (user.permisos && typeof user.permisos === "object") return user.permisos;
+  // Fallback por rol
+  const byRol = {
+    admin:   {areas:["cocina","vinos","barra","postres","almacen_global"],tabs:["dashboard","almacen","subs","recetas","platillo","scanner","movs","ai"],ver_costos:true,editar_almacen:true,ver_usuarios:true},
+    chef:    {areas:["cocina","vinos","barra","postres"],tabs:["dashboard","subs","recetas","platillo","movs","ai"],ver_costos:true,editar_almacen:false,ver_usuarios:false},
+    compras: {areas:["cocina","almacen_global"],tabs:["almacen","scanner","movs"],ver_costos:false,editar_almacen:true,ver_usuarios:false},
+    vista:   {areas:["cocina","vinos","barra","postres"],tabs:["dashboard","recetas"],ver_costos:false,editar_almacen:false,ver_usuarios:false},
+  };
+  return byRol[user.rol] || DEFAULT_PERMISOS;
+}
+
+const ALL_AREAS  = ["cocina","vinos","barra","postres","almacen_global"];
+const ALL_TABS   = ["dashboard","almacen","subs","recetas","platillo","scanner","movs","ai"];
+const AREA_LABEL = {cocina:"Cocina",vinos:"Vinos",barra:"Barra",postres:"Postres",almacen_global:"Almacén General"};
+const TAB_LABEL  = {dashboard:"Dashboard",almacen:"Almacén",subs:"Sub-Recetas",recetas:"Recetas",platillo:"Platillo",scanner:"Facturas",movs:"Movimientos",ai:"Asistente"};
+// ── Datos estáticos de otras áreas ──────────────────────────
+const RECS_VINOS = [
+  {id:"VIN001",nombre:"Prosecco Vaporetto",cat:"Copas - Burbujas 5oz",precio:300,lineas:[]},
+  {id:"VIN002",nombre:"Belstar Rose",cat:"Copas - Burbujas 5oz",precio:300,lineas:[]},
+  {id:"VIN003",nombre:"Suavis",cat:"Copas - Blancos 5oz",precio:350,lineas:[]},
+  {id:"VIN004",nombre:"Pinot Grigio IGT",cat:"Copas - Blancos 5oz",precio:300,lineas:[]},
+  {id:"VIN005",nombre:"Pecorino IGT",cat:"Copas - Blancos 5oz",precio:300,lineas:[]},
+  {id:"VIN006",nombre:"Gaudium Rosato IGT",cat:"Copas - Rosado 5oz",precio:380,lineas:[]},
+  {id:"VIN007",nombre:"MMM Rose",cat:"Copas - Rosado 5oz",precio:320,lineas:[]},
+  {id:"VIN008",nombre:"Alanera IGT",cat:"Copas - Tintos 5oz",precio:330,lineas:[]},
+  {id:"VIN009",nombre:"Costera",cat:"Copas - Tintos 5oz",precio:320,lineas:[]},
+  {id:"VIN010",nombre:"Barbera d Asti",cat:"Copas - Tintos 5oz",precio:380,lineas:[]},
+  {id:"VIN011",nombre:"Bassus",cat:"Copas - Dulces 2oz",precio:380,lineas:[]},
+  {id:"VIN012",nombre:"Vin Santo",cat:"Copas - Dulces 2oz",precio:320,lineas:[]},
+  {id:"VIN013",nombre:"Moscato d Asti",cat:"Copas - Dulces 2oz",precio:180,lineas:[]},
+  {id:"VIN014",nombre:"Passito IGP 2014",cat:"Copas - Dulces 2oz",precio:380,lineas:[]},
+  {id:"VIN015",nombre:"Bassus",cat:"Vino di Meditazione 2oz",precio:380,lineas:[]},
+  {id:"VIN016",nombre:"Moscato d Asti DOCG",cat:"Vino di Meditazione 2oz",precio:180,lineas:[]},
+  {id:"VIN017",nombre:"Vin Santo",cat:"Vino di Meditazione 2oz",precio:320,lineas:[]},
+  {id:"VIN018",nombre:"L Arzente del Castello",cat:"Vino di Meditazione 2oz",precio:380,lineas:[]},
+  {id:"VIN019",nombre:"Grapa Acquavite Bianco",cat:"Vino di Meditazione 2oz",precio:350,lineas:[]},
+  {id:"VIN020",nombre:"Grapa Acquavite Riserva",cat:"Vino di Meditazione 2oz",precio:380,lineas:[]},
+  {id:"VIN021",nombre:"Grappa Invecchiata Il Falcone",cat:"Vino di Meditazione 2oz",precio:380,lineas:[]},
+  {id:"VIN022",nombre:"Amaro 16",cat:"Vino di Meditazione 2oz",precio:200,lineas:[]},
+  {id:"VIN023",nombre:"Oporto Black Reserve",cat:"Vino di Meditazione 2oz",precio:350,lineas:[]},
+  {id:"VIN024",nombre:"Passito IGP 2014",cat:"Vino di Meditazione 2oz",precio:380,lineas:[]},
+  {id:"VIN025",nombre:"Purete 1er Cru Brut Nature",cat:"Botellas - Burbujas 750ml",precio:5500,lineas:[]},
+  {id:"VIN026",nombre:"Francois I",cat:"Botellas - Burbujas 750ml",precio:2200,lineas:[]},
+  {id:"VIN027",nombre:"Francois II",cat:"Botellas - Burbujas 750ml",precio:2400,lineas:[]},
+  {id:"VIN028",nombre:"Prosecco Rose DOCG",cat:"Botellas - Burbujas 750ml",precio:1500,lineas:[]},
+  {id:"VIN029",nombre:"Scuro IGT",cat:"Botellas - Burbujas 750ml",precio:1500,lineas:[]},
+  {id:"VIN030",nombre:"Prosecco Vaporetto DOC",cat:"Botellas - Burbujas 750ml",precio:1500,lineas:[]},
+  {id:"VIN031",nombre:"Godelia Extra Brut",cat:"Botellas - Burbujas 750ml",precio:2200,lineas:[]},
+  {id:"VIN032",nombre:"Gaudium Rosato IGT",cat:"Botellas - Rosados 750ml",precio:1850,lineas:[]},
+  {id:"VIN033",nombre:"De J Rivera Rose",cat:"Botellas - Rosados 750ml",precio:1900,lineas:[]},
+  {id:"VIN034",nombre:"Haus Klosterberg Rose",cat:"Botellas - Rosados 750ml",precio:1600,lineas:[]},
+  {id:"VIN035",nombre:"Rose MMM",cat:"Botellas - Rosados 750ml",precio:1600,lineas:[]},
+  {id:"VIN036",nombre:"Orange Leplan",cat:"Botellas - Rosados 750ml",precio:1500,lineas:[]},
+  {id:"VIN037",nombre:"Costamolino DOC",cat:"Botellas - Blancos 750ml",precio:1600,lineas:[]},
+  {id:"VIN038",nombre:"Sauvignon Blanc IGT",cat:"Botellas - Blancos 750ml",precio:1500,lineas:[]},
+  {id:"VIN039",nombre:"Pinot Grigio IGT",cat:"Botellas - Blancos 750ml",precio:1500,lineas:[]},
+  {id:"VIN040",nombre:"Olli DOC",cat:"Botellas - Blancos 750ml",precio:1500,lineas:[]},
+  {id:"VIN041",nombre:"Haus Klosterberg Sweet",cat:"Botellas - Blancos 750ml",precio:1800,lineas:[]},
+  {id:"VIN042",nombre:"Parvada Reserva",cat:"Botellas - Tintos 750ml",precio:2800,lineas:[]},
+  {id:"VIN043",nombre:"Parvada Cabernet Franc",cat:"Botellas - Tintos 750ml",precio:2700,lineas:[]},
+  {id:"VIN044",nombre:"De J Rivera",cat:"Botellas - Tintos 750ml",precio:2900,lineas:[]},
+  {id:"VIN045",nombre:"Guidova",cat:"Botellas - Tintos 750ml",precio:2900,lineas:[]},
+  {id:"VIN046",nombre:"Guidova 30",cat:"Botellas - Tintos 750ml",precio:3200,lineas:[]},
+  {id:"VIN047",nombre:"Fusion 2021",cat:"Botellas - Tintos 750ml",precio:1900,lineas:[]},
+  {id:"VIN048",nombre:"Tuma",cat:"Botellas - Tintos 750ml",precio:1500,lineas:[]},
+  {id:"VIN049",nombre:"IR Rosso IGT",cat:"Botellas - Tintos 750ml",precio:2700,lineas:[]},
+  {id:"VIN050",nombre:"Carmenere Piu IGT",cat:"Botellas - Tintos 750ml",precio:2300,lineas:[]},
+  {id:"VIN051",nombre:"Violante",cat:"Botellas - Tintos 750ml",precio:1500,lineas:[]},
+  {id:"VIN052",nombre:"Costera",cat:"Botellas - Tintos 750ml",precio:1600,lineas:[]},
+  {id:"VIN053",nombre:"Poggio ai Ginepri",cat:"Botellas - Tintos 750ml",precio:2700,lineas:[]},
+  {id:"VIN054",nombre:"Langhe Nebbiolo Perbacco DOC",cat:"Botellas - Tintos 750ml",precio:3500,lineas:[]},
+  {id:"VIN055",nombre:"Saia DOC",cat:"Botellas - Tintos 750ml",precio:2700,lineas:[]},
+  {id:"VIN056",nombre:"Nobile",cat:"Botellas - Tintos 750ml",precio:3000,lineas:[]},
+  {id:"VIN057",nombre:"Langhe Nebbiolo DOC",cat:"Botellas - Tintos 750ml",precio:2700,lineas:[]},
+  {id:"VIN058",nombre:"Barbera d Asti DOCG",cat:"Botellas - Tintos 750ml",precio:1900,lineas:[]},
+  {id:"VIN059",nombre:"Amarone della Valpolicella DOCG",cat:"Botellas - Tintos 750ml",precio:5500,lineas:[]},
+  {id:"VIN060",nombre:"Spatburgunder Tradition",cat:"Botellas - Tintos 750ml",precio:4000,lineas:[]},
+  {id:"VIN061",nombre:"Trimbach Pinot Noir Reserve",cat:"Botellas - Tintos 750ml",precio:2800,lineas:[]},
+  {id:"VIN062",nombre:"Chateau Moncets",cat:"Botellas - Tintos 750ml",precio:2600,lineas:[]},
+  {id:"VIN063",nombre:"Bourgogne",cat:"Botellas - Tintos 750ml",precio:2900,lineas:[]},
+  {id:"VIN064",nombre:"Los Gredales",cat:"Botellas - Tintos 750ml",precio:1700,lineas:[]},
+  {id:"VIN065",nombre:"Bobos",cat:"Botellas - Tintos 750ml",precio:2900,lineas:[]},
+  {id:"VIN066",nombre:"Scala Dei Tribut",cat:"Botellas - Tintos 750ml",precio:2600,lineas:[]},
+  {id:"VIN067",nombre:"Silice",cat:"Botellas - Tintos 750ml",precio:1900,lineas:[]},
+  {id:"VIN068",nombre:"Barbaresco Asili DOCG 2019",cat:"Vinos Excepcionales",precio:5000,lineas:[]},
+  {id:"VIN069",nombre:"Chateau Figeac 2011 Premier Grand Cru",cat:"Vinos Excepcionales",precio:20000,lineas:[]},
+  {id:"VIN070",nombre:"Chateauneuf du Pape",cat:"Vinos Excepcionales",precio:6000,lineas:[]},
+  {id:"VIN071",nombre:"Casa Castillo Pie Franco 2019",cat:"Vinos Excepcionales",precio:7800,lineas:[]},
+  {id:"VIN072",nombre:"Quod",cat:"Vinos Excepcionales",precio:5200,lineas:[]},
+  {id:"VIN073",nombre:"Valpolicella Superiore 2017",cat:"Vinos Excepcionales",precio:8000,lineas:[]},
+  {id:"VIN074",nombre:"Amarone della Valpolicella DOCG 2017",cat:"Vinos Excepcionales",precio:23500,lineas:[]},
+  {id:"VIN075",nombre:"Barolo DOCG Unoperuno 2019",cat:"Vinos Excepcionales",precio:22000,lineas:[]},
+  {id:"VIN076",nombre:"Oreno IGT",cat:"Vinos Excepcionales",precio:6800,lineas:[]},
+  {id:"VIN077",nombre:"Cignale IGT 2018",cat:"Vinos Excepcionales",precio:5500,lineas:[]},
+  {id:"VIN078",nombre:"Toni Jost 2016",cat:"Vinos Excepcionales",precio:4500,lineas:[]},
+  {id:"VIN079",nombre:"Grand Vin de Chateau Latour 2008",cat:"La Cava del Chef",precio:21000,lineas:[]},
+  {id:"VIN080",nombre:"Chateau Lafite Rothschild 1993",cat:"La Cava del Chef",precio:27000,lineas:[]},
+  {id:"VIN081",nombre:"Chateau Margaux 1994",cat:"La Cava del Chef",precio:23000,lineas:[]},
+  {id:"VIN082",nombre:"Chateau Pichon Longueville 2015",cat:"La Cava del Chef",precio:11000,lineas:[]},
+  {id:"VIN083",nombre:"Chateau Pichon Baron 2014",cat:"La Cava del Chef",precio:8000,lineas:[]},
+  {id:"VIN084",nombre:"Chateau Lynch Bages 1999",cat:"La Cava del Chef",precio:8000,lineas:[]},
+  {id:"VIN085",nombre:"Les Forts de Latour 2005",cat:"La Cava del Chef",precio:10000,lineas:[]},
+  {id:"VIN086",nombre:"Chateau Palmer 2004",cat:"La Cava del Chef",precio:13000,lineas:[]},
+  {id:"VIN087",nombre:"Carruades de Lafite 1996",cat:"La Cava del Chef",precio:11000,lineas:[]},
+  {id:"VIN088",nombre:"Chateau Gruaud Larose 2005",cat:"La Cava del Chef",precio:7500,lineas:[]},
+  {id:"VIN089",nombre:"Gaja Costa Russi 2001",cat:"La Cava del Chef",precio:15500,lineas:[]},
+  {id:"VIN090",nombre:"Gaja Sori Tildin 2003",cat:"La Cava del Chef",precio:13000,lineas:[]},
+  {id:"VIN091",nombre:"Ornellaia 2001",cat:"La Cava del Chef",precio:14000,lineas:[]},
+  {id:"VIN092",nombre:"Ornellaia 2011",cat:"La Cava del Chef",precio:11000,lineas:[]},
+  {id:"VIN093",nombre:"Sassicaia 1983",cat:"La Cava del Chef",precio:15000,lineas:[]},
+  {id:"VIN094",nombre:"Barolo Cannubi 2006",cat:"La Cava del Chef",precio:7500,lineas:[]},
+  {id:"VIN095",nombre:"Brunello di Montalcino 2004",cat:"La Cava del Chef",precio:7500,lineas:[]},
+  {id:"VIN096",nombre:"Moccagatta Barbaresco Basarin 2006",cat:"La Cava del Chef",precio:8000,lineas:[]}
+];
+
+const RECS_BARRA = [
+  {id:"BAR001",nombre:"White Negroni",cat:"The House Ones",precio:260,lineas:[]},
+  {id:"BAR002",nombre:"Lavanda Tequila Sour",cat:"The House Ones",precio:260,lineas:[]},
+  {id:"BAR003",nombre:"Paloma Galea",cat:"The House Ones",precio:240,lineas:[]},
+  {id:"BAR004",nombre:"Hendrick's Tonic",cat:"The House Ones",precio:340,lineas:[]},
+  {id:"BAR005",nombre:"Margarita Blanca",cat:"The House Ones",precio:255,lineas:[]},
+  {id:"BAR006",nombre:"Apple Mint Julep",cat:"The House Ones",precio:240,lineas:[]},
+  {id:"BAR007",nombre:"Mezcalita",cat:"The House Ones",precio:280,lineas:[]},
+  {id:"BAR008",nombre:"Martini de Lichi",cat:"The House Ones",precio:275,lineas:[]},
+  {id:"BAR009",nombre:"Last Flight",cat:"The Hardknocks",precio:280,lineas:[]},
+  {id:"BAR010",nombre:"Negroni",cat:"The Hardknocks",precio:270,lineas:[]},
+  {id:"BAR011",nombre:"Martini",cat:"The Hardknocks",precio:255,lineas:[]},
+  {id:"BAR012",nombre:"Boulevardier",cat:"The Hardknocks",precio:270,lineas:[]},
+  {id:"BAR013",nombre:"Southside",cat:"The Hardknocks",precio:240,lineas:[]},
+  {id:"BAR014",nombre:"Tuscan Spritz",cat:"The Spritz",precio:285,lineas:[]},
+  {id:"BAR015",nombre:"Aperol Spritz",cat:"The Spritz",precio:255,lineas:[]},
+  {id:"BAR016",nombre:"Corona",cat:"Cervezas",precio:65,lineas:[]},
+  {id:"BAR017",nombre:"Victoria",cat:"Cervezas",precio:65,lineas:[]},
+  {id:"BAR018",nombre:"Negra Modelo",cat:"Cervezas",precio:85,lineas:[]},
+  {id:"BAR019",nombre:"Modelo Especial",cat:"Cervezas",precio:85,lineas:[]},
+  {id:"BAR020",nombre:"Michelob Ultra",cat:"Cervezas",precio:90,lineas:[]},
+  {id:"BAR021",nombre:"Jarra de Clericot 1L",cat:"Para Compartir",precio:955,lineas:[]},
+  {id:"BAR022",nombre:"Mineral Ethe 350ml",cat:"Aguas",precio:80,lineas:[]},
+  {id:"BAR023",nombre:"Natural Ethe 350ml",cat:"Aguas",precio:80,lineas:[]},
+  {id:"BAR024",nombre:"Mineral Ethe 700ml",cat:"Aguas",precio:140,lineas:[]},
+  {id:"BAR025",nombre:"Natural Ethe 700ml",cat:"Aguas",precio:140,lineas:[]},
+  {id:"BAR026",nombre:"Topo Chico 325ml",cat:"Aguas",precio:65,lineas:[]},
+  {id:"BAR027",nombre:"Mojito de Maracuya",cat:"Mocktails",precio:175,lineas:[]},
+  {id:"BAR028",nombre:"Pina Colada",cat:"Mocktails",precio:175,lineas:[]},
+  {id:"BAR029",nombre:"Summer Fizz",cat:"Mocktails",precio:175,lineas:[]},
+  {id:"BAR030",nombre:"Kiwi and Calm",cat:"Mocktails",precio:175,lineas:[]},
+  {id:"BAR031",nombre:"Matcha Mango Fun",cat:"Mocktails",precio:175,lineas:[]},
+  {id:"BAR032",nombre:"Frutos Rojos",cat:"Mocktails",precio:85,lineas:[]},
+  {id:"BAR033",nombre:"Pina",cat:"Mocktails",precio:85,lineas:[]},
+  {id:"BAR034",nombre:"Digestiva",cat:"Tisanas Naturales",precio:75,lineas:[]},
+  {id:"BAR035",nombre:"Relajante",cat:"Tisanas Naturales",precio:75,lineas:[]},
+  {id:"BAR036",nombre:"Matcha Cremoso",cat:"Tisanas Naturales",precio:175,lineas:[]}
+];
+
+const RECS_POSTRES = [
+  {id:"POS001",nombre:"Tarta de Tiramisu",cat:"Postres",precio:350,lineas:[]},
+  {id:"POS002",nombre:"Affogato",cat:"Postres",precio:270,lineas:[]},
+  {id:"POS003",nombre:"Torta al Formaggio",cat:"Postres",precio:340,lineas:[]},
+  {id:"POS004",nombre:"Pastel",cat:"Postres",precio:340,lineas:[]},
+  {id:"POS005",nombre:"Tabla de Quesos 3",cat:"Postres",precio:525,lineas:[]},
+  {id:"POS006",nombre:"Sorbete Maracuya Coco Jengibre",cat:"Sorbetes",precio:195,lineas:[]},
+  {id:"POS007",nombre:"Sorbete Te Verde Melon",cat:"Sorbetes",precio:195,lineas:[]},
+  {id:"POS008",nombre:"Sorbete Fior di Latte Limon",cat:"Sorbetes",precio:195,lineas:[]},
+  {id:"POS009",nombre:"Gelato Dulce de Leche Fudge",cat:"Gelatos",precio:195,lineas:[]},
+  {id:"POS010",nombre:"Gelato Piloncillo Carambolo",cat:"Gelatos",precio:195,lineas:[]},
+  {id:"POS011",nombre:"Gelato Yogurt Mango Miel",cat:"Gelatos",precio:195,lineas:[]}
+];
+
 
 const SUPABASE_URL = "https://epgyvdbqinfucajvscns.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwZ3l2ZGJxaW5mdWNhanZzY25zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MzAyMTgsImV4cCI6MjA5NDUwNjIxOH0.7gZGGP3JLDyKz5JJcLpJKfRFWkGeZnT68sonIUQKNeY";
@@ -146,7 +318,7 @@ function Login({onLogin}){
   );
 }
 
-function HomeScreen({alm, recs, setArea, user, onLogout}){
+function HomeScreen({alm, recs, setArea, user, onLogout, permisos}){
   const al = alm.filter(a=>stSt(a)==="rep").length;
   const totalVal = alm.reduce((s,a)=>s+a.precio*a.stock,0);
 
@@ -189,7 +361,7 @@ function HomeScreen({alm, recs, setArea, user, onLogout}){
       <div style={{padding:16}}>
         <p style={{color:MUT,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Areas del Restaurante</p>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          {AREAS.map(area=>{
+          {AREAS.filter(area=>permisos.areas.includes(area.id)).map(area=>{
             const n = recCount[area.id]||0;
             return(
               <div key={area.id} onClick={()=>setArea(area.id)} style={{background:CARD,border:"1px solid "+BORD,borderRadius:16,padding:16,cursor:"pointer",position:"relative",overflow:"hidden"}}>
@@ -211,7 +383,7 @@ function HomeScreen({alm, recs, setArea, user, onLogout}){
         </div>
 
         {/* Almacen General */}
-        <div onClick={()=>setArea("almacen_global")} style={{background:CARD,border:"1px solid "+BLUE+"44",borderRadius:16,padding:16,cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+        {permisos.areas.includes("almacen_global")&&<div onClick={()=>setArea("almacen_global")} style={{background:CARD,border:"1px solid "+BLUE+"44",borderRadius:16,padding:16,cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
           <div style={{width:44,height:44,borderRadius:12,background:BLUE+"18",border:"1px solid "+BLUE+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🏪</div>
           <div style={{flex:1}}>
             <p style={{fontWeight:800,fontSize:15,marginBottom:2}}>Almacen General</p>
@@ -221,10 +393,10 @@ function HomeScreen({alm, recs, setArea, user, onLogout}){
             <p style={{fontWeight:700,fontSize:14,color:BLUE}}>{alm.length} ing.</p>
             <p style={{color:MUT,fontSize:10}}>{fm(totalVal)}</p>
           </div>
-        </div>
+        </div>}
 
-        {/* Panel usuarios (solo admin) */}
-        {user.rol==="admin"&&<div onClick={()=>setArea("usuarios")} style={{background:CARD,border:"1px solid "+PUR+"44",borderRadius:16,padding:16,cursor:"pointer",display:"flex",alignItems:"center",gap:14,marginTop:12}}>
+        {/* Panel usuarios */}
+        {permisos.ver_usuarios&&<div onClick={()=>setArea("usuarios")} style={{background:CARD,border:"1px solid "+PUR+"44",borderRadius:16,padding:16,cursor:"pointer",display:"flex",alignItems:"center",gap:14,marginTop:12}}>
           <div style={{width:44,height:44,borderRadius:12,background:PUR+"18",border:"1px solid "+PUR+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>👥</div>
           <div style={{flex:1}}>
             <p style={{fontWeight:800,fontSize:15,marginBottom:2}}>Usuarios</p>
@@ -349,7 +521,7 @@ function MenuScanner({areaId, recs, setRecs, info, onClose}){
   );
 }
 
-function Dashboard({alm, subs, recs, setTab}){
+function Dashboard({alm, subs, recs, setTab, verCostos=true}){
   const [detRec,setDetRec]=useState(null);
   const al=alm.filter(a=>stSt(a)==="rep").length;
   const val=alm.reduce((s,a)=>s+a.precio*a.stock,0);
@@ -393,10 +565,10 @@ function Dashboard({alm, subs, recs, setTab}){
                 </div>
                 <div style={{textAlign:"right"}}>
                   <p style={{fontWeight:800,fontSize:15}}>{fm(rec.precio)}</p>
-                  <p style={{color:ACC,fontSize:12,fontWeight:700}}>Costo: {fm(c)}</p>
+                  {verCostos&&<p style={{color:ACC,fontSize:12,fontWeight:700}}>Costo: {fm(c)}</p>}
                 </div>
               </Row>
-              <div style={{background:SURF,borderRadius:8,padding:"8px 10px"}}>
+              {verCostos?<div style={{background:SURF,borderRadius:8,padding:"8px 10px"}}>
                 <Row style={{marginBottom:6}}>
                   <span style={{fontSize:12,color:MUT}}>Food Cost:</span>
                   <span style={{fontSize:13,color:fcC(fc),fontWeight:800}}>{pc(fc)}</span>
@@ -411,7 +583,7 @@ function Dashboard({alm, subs, recs, setTab}){
                   </Row>
                 </div>
                 <p style={{color:MUT,fontSize:10,marginTop:4,textAlign:"right"}}>Toca para ver desglose →</p>
-              </div>
+              </div>:<p style={{color:MUT,fontSize:10,marginTop:4,textAlign:"right"}}>Toca para ver detalle →</p>}
             </Box>
           </div>
         );
@@ -560,7 +732,7 @@ function SubRecetas({subs,alm}){
   );
 }
 
-function DetalleReceta({rec,alm,subs,onClose}){
+function DetalleReceta({rec,alm,subs,onClose,verCostos=true}){
   const costo=recCosto(rec,alm,subs),fc=rec.precio>0?costo/rec.precio:0,mg=rec.precio-costo,mgp=rec.precio>0?mg/rec.precio:0;
   return(
     <div style={{position:"fixed",inset:0,background:BG,zIndex:200,overflowY:"auto",paddingBottom:40}}>
@@ -616,15 +788,17 @@ function DetalleReceta({rec,alm,subs,onClose}){
   );
 }
 
-function Recetas({recs,alm,subs}){
+function Recetas({recs,alm,subs,areaColor,verCostos=true}){
   const [q,setQ]=useState(""),[cat,setCat]=useState("Todas"),[det,setDet]=useState(null);
+  const cats=["Todas",...[...new Set(recs.map(r=>r.cat))].sort()];
   const list=recs.filter(r=>(cat==="Todas"||r.cat===cat)&&r.nombre.toLowerCase().includes(q.toLowerCase()));
-  if(det)return <DetalleReceta rec={det} alm={alm} subs={subs} onClose={()=>setDet(null)}/>;
+  if(det)return <DetalleReceta rec={det} alm={alm} subs={subs} onClose={()=>setDet(null)} verCostos={verCostos}/>;
+  const ac=areaColor||ACC;
   return(
     <div>
-      <Fld value={q} onChange={setQ} placeholder="Buscar platillo..." style={{marginBottom:10}}/>
-      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {["Todas","Entradas","Pastas","Principales"].map(c=><button key={c} onClick={()=>setCat(c)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:cat===c?ACC:SURF,color:cat===c?"#fff":MUT,fontWeight:cat===c?700:500,fontSize:12,cursor:"pointer"}}>{c}</button>)}
+      <Fld value={q} onChange={setQ} placeholder="Buscar..." style={{marginBottom:10}}/>
+      <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
+        {cats.map(c=><button key={c} onClick={()=>setCat(c)} style={{padding:"5px 12px",borderRadius:20,border:"none",background:cat===c?ac:SURF,color:cat===c?"#fff":MUT,fontWeight:cat===c?700:500,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{c}</button>)}
       </div>
       <p style={{color:MUT,fontSize:11,marginBottom:10}}>Toca un elemento para ver el desglose completo</p>
       {list.map(rec=>{
@@ -634,7 +808,7 @@ function Recetas({recs,alm,subs}){
           <Box key={rec.id} bc={stk?RED:BORD} style={{marginBottom:10,cursor:"pointer"}} onClick={()=>setDet(rec)}>
             <Row style={{marginBottom:8}}>
               <div><p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{rec.nombre}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Tag color={catC(rec.cat)}>{rec.cat}</Tag><Tag color={fcC(fc)}>{fcL(fc)}</Tag>{stk&&<Tag color={RED}>Stock bajo</Tag>}</div></div>
-              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fm(rec.precio)}</p><p style={{color:fcC(fc),fontSize:12,fontWeight:700}}>FC {pc(fc)}</p><p style={{color:GREEN,fontSize:11,fontWeight:700}}>{fm(mg)} ({pc(mgp)})</p></div>
+              <div style={{textAlign:"right"}}><p style={{fontWeight:800,fontSize:15}}>{fm(rec.precio)}</p>{verCostos&&<p style={{color:fcC(fc),fontSize:12,fontWeight:700}}>FC {pc(fc)}</p>}{verCostos&&<p style={{color:GREEN,fontSize:11,fontWeight:700}}>{fm(mg)} ({pc(mgp)})</p>}</div>
             </Row>
             <Row style={{borderTop:"1px solid "+SURF,paddingTop:6}}><span style={{color:MUT,fontSize:11}}>Costo: {fm(c)}</span><span style={{color:MUT,fontSize:12,fontWeight:600}}>Ver detalle →</span></Row>
           </Box>
@@ -804,13 +978,48 @@ function Asistente({alm,subs,recs,movs,user}){
   const bottomRef=useRef();
   useEffect(()=>{if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
   function ctx(){
-    const alertas=alm.filter(a=>stSt(a)==="rep");
-    const top=recs.map(r=>{const c=recCosto(r,alm,subs),fc=r.precio>0?c/r.precio:0;return{n:r.nombre,fc,mg:(r.precio-c).toFixed(2)};}).sort((a,b)=>a.fc-b.fc);
-    const val=alm.reduce((s,a)=>s+a.precio*a.stock,0);
-    return `Eres el asistente del restaurante Galea. Responde en español, conciso y útil.
-Usuario: ${user.nombre} (${user.rol}). Ingredientes: ${alm.length} (valor $${val.toFixed(2)}). Sub-recetas: ${subs.length}. Platillos: ${recs.length}. Alertas: ${alertas.length} (${alertas.map(a=>a.nombre).join(", ")||"ninguno"}). Movimientos: ${movs.length}.
-TOP 5: ${top.slice(0,5).map((r,i)=>`${i+1}. ${r.n} FC ${(r.fc*100).toFixed(1)}% Margen $${r.mg}`).join(" | ")}
-PEOR: ${top.slice(-3).reverse().map(r=>`${r.n} ${(r.fc*100).toFixed(1)}%`).join(" | ")}`;
+    const perm = getPermisos(user);
+    const verCostos = !!perm.ver_costos;
+    const areasPermitidas = perm.areas || [];
+    const alertas = alm.filter(a=>stSt(a)==="rep");
+    const val = alm.reduce((s,a)=>s+a.precio*a.stock,0);
+
+    // Solo incluir platillos de áreas a las que tiene acceso
+    const recsPermitidos = recs.filter(r=>{
+      // recs son de cocina; si no tiene cocina, no ve platillos
+      return areasPermitidas.includes("cocina");
+    });
+
+    // Sistema prompt dinámico según permisos
+    let sistema = `Eres el asistente del restaurante Galea. Responde en español, conciso y útil.
+Usuario: ${user.nombre}. Áreas con acceso: ${areasPermitidas.join(", ")||"ninguna"}.`;
+
+    // Solo dar contexto de almacén si tiene acceso
+    if(areasPermitidas.includes("almacen_global") || areasPermitidas.includes("cocina")){
+      sistema += `\nIngredientes en almacén: ${alm.length}. Alertas de stock bajo: ${alertas.length}${alertas.length>0?" ("+alertas.map(a=>a.nombre).join(", ")+")":""}.`;
+      sistema += `\nMovimientos registrados: ${movs.length}.`;
+    }
+
+    // Solo dar costos si tiene permiso de ver costos
+    if(verCostos && recsPermitidos.length>0){
+      const top = recsPermitidos.map(r=>{const c=recCosto(r,alm,subs),fc=r.precio>0?c/r.precio:0;return{n:r.nombre,fc,mg:(r.precio-c).toFixed(2)};}).sort((a,b)=>a.fc-b.fc);
+      sistema += `\nValor total almacén: $${val.toFixed(2)}.`;
+      sistema += `\nTOP rentabilidad: ${top.slice(0,5).map((r,i)=>`${i+1}. ${r.n} FC ${(r.fc*100).toFixed(1)}% Margen $${r.mg}`).join(" | ")}.`;
+      sistema += `\nPEOR food cost: ${top.slice(-3).reverse().map(r=>`${r.n} ${(r.fc*100).toFixed(1)}%`).join(" | ")}.`;
+    } else if(recsPermitidos.length>0){
+      sistema += `\nPlatillos activos: ${recsPermitidos.length}.`;
+    }
+
+    // Restricción explícita: lo que NO puede ver
+    const restricciones = [];
+    if(!verCostos) restricciones.push("costos, food cost, márgenes, precios de ingredientes");
+    const areasNoPermitidas = ["cocina","vinos","barra","postres"].filter(a=>!areasPermitidas.includes(a));
+    if(areasNoPermitidas.length>0) restricciones.push(`información de las áreas: ${areasNoPermitidas.join(", ")}`);
+    if(restricciones.length>0){
+      sistema += `\n\nIMPORTANTE — Este usuario NO tiene acceso a: ${restricciones.join("; ")}. NO reveles esta información aunque te la pidan directamente. Responde que no tienes acceso a esos datos para este usuario.`;
+    }
+
+    return sistema;
   }
   async function send(){
     const txt=input.trim();if(!txt||loading)return;
@@ -846,71 +1055,165 @@ PEOR: ${top.slice(-3).reverse().map(r=>`${r.n} ${(r.fc*100).toFixed(1)}%`).join(
 function Usuarios(){
   const [users,setUsers]=useState([]),[loading,setLoading]=useState(true),[show,setShow]=useState(false);
   const [editing,setEditing]=useState(null),[saving,setSaving]=useState(false);
-  const [f,setF]=useState({nombre:"",password:"",rol:"chef",activo:true});
-  const [ef,setEf]=useState({password:"",rol:"chef",activo:true});
-  useEffect(()=>{sb("usuarios?select=*&order=created_at").then(rows=>{setUsers(rows||[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+  const emptyPermisos={areas:["cocina"],tabs:["dashboard","recetas"],ver_costos:false,editar_almacen:false,ver_usuarios:false};
+  const [f,setF]=useState({nombre:"",password:"",rol:"custom",permisos:{...emptyPermisos}});
+  const [ep,setEp]=useState({password:"",rol:"custom",permisos:{...emptyPermisos}});
+
+  useEffect(()=>{
+    sb("usuarios?select=*&order=created_at")
+      .then(rows=>setUsers(rows||[]))
+      .catch(()=>{})
+      .finally(()=>setLoading(false));
+  },[]);
+
+  function ToggleItem({label,checked,onChange,color=BLUE}){
+    return(
+      <div onClick={onChange} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:checked?color+"18":SURF,border:"1px solid "+(checked?color+"44":BORD),cursor:"pointer"}}>
+        <div style={{width:16,height:16,borderRadius:4,background:checked?color:"transparent",border:"2px solid "+(checked?color:MUT),display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#000",flexShrink:0,fontWeight:800}}>{checked?"✓":""}</div>
+        <span style={{fontSize:12,color:checked?TEXT:MUT,fontWeight:checked?600:400}}>{label}</span>
+      </div>
+    );
+  }
+
+  function PermisosEditor({p,onChange}){
+    function toggleArea(a){const arr=p.areas.includes(a)?p.areas.filter(x=>x!==a):[...p.areas,a];onChange({...p,areas:arr});}
+    function toggleTab(t){const arr=p.tabs.includes(t)?p.tabs.filter(x=>x!==t):[...p.tabs,t];onChange({...p,tabs:arr});}
+    return(
+      <div>
+        <p style={{color:MUT,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Áreas con acceso</p>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          {ALL_AREAS.map(a=><ToggleItem key={a} label={AREA_LABEL[a]} checked={p.areas.includes(a)} onChange={()=>toggleArea(a)} color={BLUE}/>)}
+        </div>
+        <p style={{color:MUT,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Módulos visibles</p>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          {ALL_TABS.map(t=><ToggleItem key={t} label={TAB_LABEL[t]} checked={p.tabs.includes(t)} onChange={()=>toggleTab(t)} color={ACC}/>)}
+        </div>
+        <p style={{color:MUT,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Permisos especiales</p>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          <ToggleItem label="Ver costos y food cost" checked={!!p.ver_costos} onChange={()=>onChange({...p,ver_costos:!p.ver_costos})} color={GREEN}/>
+          <ToggleItem label="Editar almacén" checked={!!p.editar_almacen} onChange={()=>onChange({...p,editar_almacen:!p.editar_almacen})} color={YEL}/>
+          <ToggleItem label="Gestionar usuarios" checked={!!p.ver_usuarios} onChange={()=>onChange({...p,ver_usuarios:!p.ver_usuarios})} color={PUR}/>
+        </div>
+      </div>
+    );
+  }
+
   async function crear(){
     if(!f.nombre||!f.password)return;setSaving(true);
-    try{const res=await sb("usuarios",{method:"POST",body:JSON.stringify({nombre:f.nombre.trim(),password:f.password,rol:f.rol,activo:f.activo})});const s=Array.isArray(res)?res[0]:res;setUsers(prev=>[...prev,s]);setF({nombre:"",password:"",rol:"chef",activo:true});setShow(false);}
-    catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
+    try{
+      const res=await sb("usuarios",{method:"POST",body:JSON.stringify({nombre:f.nombre.trim(),password:f.password,rol:f.rol,activo:true,permisos:f.permisos})});
+      const s=Array.isArray(res)?res[0]:res;
+      setUsers(prev=>[...prev,s]);
+      setF({nombre:"",password:"",rol:"custom",permisos:{...emptyPermisos}});
+      setShow(false);
+    }catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
   }
+
   async function guardar(u){
     setSaving(true);
-    try{const upd={rol:ef.rol,activo:ef.activo};if(ef.password)upd.password=ef.password;await sb("usuarios?id=eq."+u.id,{method:"PATCH",body:JSON.stringify(upd)});setUsers(prev=>prev.map(x=>x.id===u.id?{...x,...upd}:x));setEditing(null);}
-    catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
+    try{
+      const upd={rol:ep.rol,permisos:ep.permisos};
+      if(ep.password)upd.password=ep.password;
+      await sb("usuarios?id=eq."+u.id,{method:"PATCH",body:JSON.stringify(upd)});
+      setUsers(prev=>prev.map(x=>x.id===u.id?{...x,...upd}:x));
+      setEditing(null);
+    }catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
   }
+
+  async function toggleActivo(u){
+    try{
+      await sb("usuarios?id=eq."+u.id,{method:"PATCH",body:JSON.stringify({activo:!u.activo})});
+      setUsers(prev=>prev.map(x=>x.id===u.id?{...x,activo:!u.activo}:x));
+    }catch(e){alert("Error: "+e.message);}
+  }
+
   async function eliminar(id){
     if(!confirm("¿Eliminar este usuario?"))return;setSaving(true);
-    try{await sb("usuarios?id=eq."+id,{method:"DELETE",prefer:"return=minimal"});setUsers(prev=>prev.filter(x=>x.id!==id));setEditing(null);}
-    catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
+    try{
+      await sb("usuarios?id=eq."+id,{method:"DELETE",prefer:"return=minimal"});
+      setUsers(prev=>prev.filter(x=>x.id!==id));setEditing(null);
+    }catch(e){alert("Error: "+e.message);}finally{setSaving(false);}
   }
+
   if(loading)return <div style={{textAlign:"center",padding:40,color:MUT}}>Cargando...</div>;
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <p style={{color:MUT,fontSize:11}}>{users.length} usuarios</p>
-        <Btn sm onClick={()=>setShow(!show)}>+ Nuevo</Btn>
+        <Btn sm onClick={()=>setShow(!show)}>+ Nuevo usuario</Btn>
       </div>
+
       {show&&<Box bc={ACC} style={{marginBottom:14}}>
-        <p style={{fontWeight:700,fontSize:13,marginBottom:12}}>Nuevo Usuario</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-          <Fld value={f.nombre} onChange={v=>setF({...f,nombre:v})} placeholder="Nombre *"/>
+        <p style={{fontWeight:700,fontSize:14,marginBottom:14}}>Nuevo Usuario</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+          <Fld value={f.nombre} onChange={v=>setF({...f,nombre:v})} placeholder="Nombre de usuario *"/>
           <Fld value={f.password} onChange={v=>setF({...f,password:v})} placeholder="Contraseña *" type="password"/>
-          <Sel value={f.rol} onChange={v=>setF({...f,rol:v})}><option value="admin">Admin — Todo</option><option value="chef">Chef — Cocina</option><option value="compras">Compras — Inventario</option><option value="vista">Vista — Solo lectura</option></Sel>
-          <div style={{display:"flex",alignItems:"center",gap:8,background:SURF,borderRadius:8,padding:"8px 10px",cursor:"pointer"}} onClick={()=>setF({...f,activo:!f.activo})}>
-            <div style={{width:18,height:18,borderRadius:4,background:f.activo?ACC:SURF,border:"1px solid "+(f.activo?ACC:BORD),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#000"}}>{f.activo?"✓":""}</div>
-            <span style={{fontSize:12,color:f.activo?TEXT:MUT}}>Activo</span>
-          </div>
         </div>
-        <div style={{display:"flex",gap:8}}><Btn color={GREEN} onClick={crear} style={{opacity:saving?0.5:1}}>{saving?"Guardando...":"Crear"}</Btn><Btn outline onClick={()=>setShow(false)}>Cancelar</Btn></div>
+        <div style={{background:SURF,borderRadius:8,padding:12,marginBottom:12}}>
+          <PermisosEditor p={f.permisos} onChange={p=>setF({...f,permisos:p})}/>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn color={GREEN} onClick={crear} style={{opacity:saving?0.5:1}}>{saving?"Creando...":"Crear usuario"}</Btn>
+          <Btn outline onClick={()=>setShow(false)}>Cancelar</Btn>
+        </div>
       </Box>}
+
       {users.map(u=>{
+        const perm=getPermisos(u);
         const isEdit=editing===u.id;
-        return(<Box key={u.id} bc={isEdit?ACC:BORD} style={{marginBottom:8,opacity:u.activo?1:0.5}}>
-          {isEdit?<div>
-            <Row style={{marginBottom:12}}><div><p style={{fontWeight:700,fontSize:14}}>{u.nombre}</p><p style={{color:MUT,fontSize:11}}>Editando acceso</p></div><Btn sm outline onClick={()=>setEditing(null)}>Cancelar</Btn></Row>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-              <Fld value={ef.password} onChange={v=>setEf({...ef,password:v})} placeholder="Nueva contraseña (opcional)" type="password"/>
-              <Sel value={ef.rol} onChange={v=>setEf({...ef,rol:v})}><option value="admin">Admin</option><option value="chef">Chef</option><option value="compras">Compras</option><option value="vista">Vista</option></Sel>
-              <div style={{display:"flex",alignItems:"center",gap:8,background:SURF,borderRadius:8,padding:"8px 10px",cursor:"pointer",gridColumn:"1/-1"}} onClick={()=>setEf({...ef,activo:!ef.activo})}>
-                <div style={{width:18,height:18,borderRadius:4,background:ef.activo?GREEN:SURF,border:"1px solid "+(ef.activo?GREEN:BORD),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#000"}}>{ef.activo?"✓":""}</div>
-                <span style={{fontSize:12,color:ef.activo?TEXT:MUT}}>{ef.activo?"Usuario activo":"Inactivo — no puede entrar"}</span>
+        return(
+          <Box key={u.id} bc={isEdit?ACC:BORD} style={{marginBottom:10,opacity:u.activo?1:0.45}}>
+            {isEdit?(
+              <div>
+                <Row style={{marginBottom:14}}>
+                  <div>
+                    <p style={{fontWeight:800,fontSize:15}}>{u.nombre}</p>
+                    <p style={{color:MUT,fontSize:11,marginTop:2}}>Editando permisos</p>
+                  </div>
+                  <Btn sm outline onClick={()=>setEditing(null)}>Cancelar</Btn>
+                </Row>
+                <div style={{marginBottom:12}}>
+                  <Fld value={ep.password} onChange={v=>setEp({...ep,password:v})} placeholder="Nueva contraseña (dejar vacío para no cambiar)" type="password"/>
+                </div>
+                <div style={{background:SURF,borderRadius:8,padding:12,marginBottom:12}}>
+                  <PermisosEditor p={ep.permisos} onChange={p=>setEp({...ep,permisos:p})}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <Btn color={ACC} onClick={()=>guardar(u)} style={{flex:2,opacity:saving?0.5:1,color:BG}}>{saving?"Guardando...":"Guardar permisos"}</Btn>
+                  {u.nombre!=="admin"&&<Btn color={RED} onClick={()=>eliminar(u.id)} style={{flex:1,opacity:saving?0.5:1}}>Eliminar</Btn>}
+                </div>
               </div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <Btn color={ACC} onClick={()=>guardar(u)} style={{flex:2,opacity:saving?0.5:1,color:"#000"}}>{saving?"Guardando...":"Guardar"}</Btn>
-              {u.nombre!=="admin"&&<Btn color={RED} onClick={()=>eliminar(u.id)} style={{flex:1,opacity:saving?0.5:1}}>Eliminar</Btn>}
-            </div>
-          </div>:(
-            <div onClick={()=>{setEditing(u.id);setEf({password:"",rol:u.rol,activo:u.activo});}} style={{cursor:"pointer"}}>
-              <Row><div><p style={{fontWeight:700,fontSize:14,marginBottom:6}}>{u.nombre}</p><div style={{display:"flex",gap:6}}><Tag color={ROL_COLOR[u.rol]||BLUE}>{u.rol}</Tag><Tag color={u.activo?GREEN:RED}>{u.activo?"Activo":"Inactivo"}</Tag></div></div><p style={{color:MUT,fontSize:11}}>Editar →</p></Row>
-            </div>
-          )}
-        </Box>);
+            ):(
+              <div>
+                <Row style={{marginBottom:10}}>
+                  <div>
+                    <p style={{fontWeight:700,fontSize:14,marginBottom:4}}>{u.nombre}</p>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <Tag color={u.activo?GREEN:RED}>{u.activo?"Activo":"Inactivo"}</Tag>
+                      {perm.ver_costos&&<Tag color={GREEN}>Ver costos</Tag>}
+                      {perm.editar_almacen&&<Tag color={YEL}>Editar almacén</Tag>}
+                      {perm.ver_usuarios&&<Tag color={PUR}>Admin</Tag>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>toggleActivo(u)} style={{background:u.activo?RED+"22":GREEN+"22",border:"1px solid "+(u.activo?RED:GREEN)+"55",borderRadius:6,padding:"4px 8px",color:u.activo?RED:GREEN,fontSize:11,cursor:"pointer",fontWeight:600}}>{u.activo?"Desactivar":"Activar"}</button>
+                    <button onClick={()=>{setEditing(u.id);setEp({password:"",rol:u.rol||"custom",permisos:perm});}} style={{background:SURF,border:"1px solid "+BORD,borderRadius:6,padding:"4px 10px",color:MUT,fontSize:11,cursor:"pointer"}}>Editar →</button>
+                  </div>
+                </Row>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {(perm.areas||[]).map(a=><span key={a} style={{background:BLUE+"15",color:BLUE,border:"1px solid "+BLUE+"30",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:600,textTransform:"uppercase"}}>{AREA_LABEL[a]||a}</span>)}
+                  {(perm.tabs||[]).map(t=><span key={t} style={{background:SURF,color:MUT,borderRadius:4,padding:"1px 6px",fontSize:9,border:"1px solid "+BORD}}>{TAB_LABEL[t]||t}</span>)}
+                </div>
+              </div>
+            )}
+          </Box>
+        );
       })}
     </div>
   );
 }
+
 
 const TABS_COCINA = [
   {id:"dashboard", ic:"📊", lb:"Dashboard"},
@@ -928,15 +1231,20 @@ function AreaApp({areaId, setArea, alm, setAlm, subs, setSubs, recs, setRecs, mo
   const info = AREAS.find(a=>a.id===areaId)||{nombre:"Area",icon:"🍽",color:ACC};
   const [tab,setTab] = useState("dashboard");
   const [showMenuScan,setShowMenuScan] = useState(false);
+  // Seleccionar recetas según área
+  const [vinosRecs,setVinosRecs] = useState(RECS_VINOS);
+  const [barraRecs,setBarraRecs] = useState(RECS_BARRA);
+  const [postresRecs,setPostresRecs] = useState(RECS_POSTRES);
+  const areaRecs = areaId==="cocina"?recs:areaId==="vinos"?vinosRecs:areaId==="barra"?barraRecs:postresRecs;
+  const setAreaRecs = areaId==="vinos"?setVinosRecs:areaId==="barra"?setBarraRecs:areaId==="postres"?setPostresRecs:setRecs;
+  const areaSubs = areaId==="cocina"?subs:[];
+  // Permisos del usuario
+  const perm = getPermisos(user);
+  const tabsVisibles = TABS_COCINA.filter(t=>perm.tabs.includes(t.id));
   const al = alm.filter(a=>stSt(a)==="rep").length;
-
-  // Filtrar tabs según rol
-  const permitidos = PERMISOS[user.rol]||[];
-  const tabsVisibles = TABS_COCINA.filter(t=>permitidos.includes(t.id)||t.id==="dashboard");
 
   return(
     <div style={{minHeight:"100vh",background:BG,color:TEXT,paddingBottom:80}}>
-      {/* Header del area */}
       <div style={{background:"linear-gradient(160deg,#0E1120 0%,#151929 100%)",borderBottom:"1px solid "+BORD,padding:"12px 16px",position:"sticky",top:0,zIndex:50}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <button onClick={()=>setArea(null)} style={{background:"none",border:"none",color:info.color,cursor:"pointer",fontSize:22,padding:"0 6px 0 0",lineHeight:1}}>←</button>
@@ -946,30 +1254,27 @@ function AreaApp({areaId, setArea, alm, setAlm, subs, setSubs, recs, setRecs, mo
             <p style={{fontSize:10,color:MUT}}>Inventario - Recetas - Costos</p>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
-            {/* Botón escanear menú */}
             <button onClick={()=>setShowMenuScan(true)} style={{background:info.color+"22",border:"1px solid "+info.color+"44",borderRadius:8,padding:"5px 10px",color:info.color,fontSize:11,fontWeight:700,cursor:"pointer"}}>📸 Menú</button>
             {al>0&&<div style={{background:RED+"22",border:"1px solid "+RED,borderRadius:20,padding:"3px 8px",fontSize:10,color:RED,fontWeight:700}}>⚠ {al}</div>}
           </div>
         </div>
       </div>
 
-      {/* Menu Scanner Modal */}
-      {showMenuScan&&<MenuScanner areaId={areaId} recs={recs} setRecs={setRecs} info={info} onClose={()=>setShowMenuScan(false)}/>}
+      {showMenuScan&&<MenuScanner areaId={areaId} recs={areaRecs} setRecs={setAreaRecs} info={info} onClose={()=>setShowMenuScan(false)}/>}
 
-      {/* Contenido */}
       <div style={{padding:"16px 16px 0"}} className="fade" key={tab}>
-        {tab==="dashboard"&&<Dashboard alm={alm} subs={subs} recs={recs} setTab={setTab}/>}
-        {tab==="almacen"&&<Almacen alm={alm} setAlm={setAlm} soloVer={user.rol==="vista"}/>}
-        {tab==="subs"&&<SubRecetas subs={subs} alm={alm}/>}
-        {tab==="recetas"&&<Recetas recs={recs} alm={alm} subs={subs}/>}
-        {tab==="platillo"&&<PorPlatillo recs={recs} alm={alm} subs={subs}/>}
+        {tab==="dashboard"&&<Dashboard alm={alm} subs={areaSubs} recs={areaRecs} setTab={setTab} verCostos={perm.ver_costos}/>}
+        {tab==="almacen"&&<Almacen alm={alm} setAlm={setAlm} soloVer={!perm.editar_almacen}/>}
+        {tab==="subs"&&<SubRecetas subs={areaSubs} alm={alm}/>}
+        {tab==="recetas"&&<Recetas recs={areaRecs} alm={alm} subs={areaSubs} areaColor={info.color} verCostos={perm.ver_costos}/>}
+        {tab==="platillo"&&perm.ver_costos&&<PorPlatillo recs={areaRecs} alm={alm} subs={areaSubs}/>}
+        {tab==="platillo"&&!perm.ver_costos&&<div style={{textAlign:"center",padding:40}}><p style={{fontSize:32,marginBottom:12}}>🔒</p><p style={{fontWeight:700,fontSize:15,marginBottom:8}}>Acceso restringido</p><p style={{color:MUT,fontSize:13}}>No tienes permiso para ver costos</p></div>}
         {tab==="scanner"&&<Scanner alm={alm} setAlm={setAlm}/>}
         {tab==="movs"&&<Movimientos movs={movs} setMovs={setMovs} alm={alm} setAlm={setAlm}/>}
-        {tab==="ai"&&<Asistente alm={alm} subs={subs} recs={recs} movs={movs} user={user}/>}
+        {tab==="ai"&&<Asistente alm={alm} subs={areaSubs} recs={areaRecs} movs={movs} user={user}/>}
         {tab==="ventas"&&<div style={{textAlign:"center",padding:40}}><p style={{fontSize:32,marginBottom:12}}>💰</p><p style={{fontWeight:700,fontSize:16,marginBottom:8}}>Ventas</p><p style={{color:MUT,fontSize:13}}>Módulo disponible próximamente</p></div>}
       </div>
 
-      {/* Nav bar */}
       <nav style={{position:"fixed",bottom:0,left:0,right:0,background:CARD,borderTop:"1px solid "+BORD,display:"flex",padding:"6px 2px",zIndex:50}}>
         {tabsVisibles.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 1px",color:tab===t.id?info.color:MUT}}>
@@ -982,7 +1287,8 @@ function AreaApp({areaId, setArea, alm, setAlm, subs, setSubs, recs, setRecs, mo
   );
 }
 
-function AlmacenGlobal({alm,setAlm,setArea}){
+function AlmacenGlobal({alm,setAlm,setArea,user}){
+  const perm=getPermisos(user);
   return(
     <div style={{minHeight:"100vh",background:BG,color:TEXT,paddingBottom:40}}>
       <div style={{background:"linear-gradient(160deg,#0E1120 0%,#151929 100%)",borderBottom:"1px solid "+BORD,padding:"12px 16px",position:"sticky",top:0,zIndex:50}}>
@@ -992,7 +1298,7 @@ function AlmacenGlobal({alm,setAlm,setArea}){
           <h1 style={{fontSize:15,fontWeight:800}}>Almacen General</h1>
         </div>
       </div>
-      <div style={{padding:"16px 16px 0"}}><Almacen alm={alm} setAlm={setAlm}/></div>
+      <div style={{padding:"16px 16px 0"}}><Almacen alm={alm} setAlm={setAlm} soloVer={!perm.editar_almacen}/></div>
     </div>
   );
 }
@@ -1053,6 +1359,8 @@ function App(){
     setUser(null);setArea(null);setAlm([]);setSubs([]);setRecs([]);setMovs([]);setDataLoaded(false);
   }
 
+  const perm = user ? getPermisos(user) : DEFAULT_PERMISOS;
+
   // Login
   if(!user)return <Login onLogin={u=>setUser(u)}/>;
 
@@ -1073,14 +1381,21 @@ function App(){
   );
 
   // Navegación por area
-  if(area==="almacen_global")return <AlmacenGlobal alm={alm} setAlm={setAlm} setArea={setArea}/>;
-  if(area==="usuarios")return <UsuariosPage setArea={setArea}/>;
-  if(area&&AREAS.find(a=>a.id===area))return(
-    <AreaApp areaId={area} setArea={setArea} alm={alm} setAlm={setAlm} subs={subs} setSubs={setSubs} recs={recs} setRecs={setRecs} movs={movs} setMovs={setMovs} user={user}/>
-  );
+  if(area==="almacen_global"){
+    if(!perm.areas.includes("almacen_global"))return <HomeScreen alm={alm} recs={recs} setArea={setArea} user={user} onLogout={logout} permisos={perm}/>;
+    return <AlmacenGlobal alm={alm} setAlm={setAlm} setArea={setArea} user={user}/>;
+  }
+  if(area==="usuarios"){
+    if(!perm.ver_usuarios)return <HomeScreen alm={alm} recs={recs} setArea={setArea} user={user} onLogout={logout} permisos={perm}/>;
+    return <UsuariosPage setArea={setArea}/>;
+  }
+  if(area&&AREAS.find(a=>a.id===area)){
+    if(!perm.areas.includes(area))return <HomeScreen alm={alm} recs={recs} setArea={setArea} user={user} onLogout={logout} permisos={perm}/>;
+    return <AreaApp areaId={area} setArea={setArea} alm={alm} setAlm={setAlm} subs={subs} setSubs={setSubs} recs={recs} setRecs={setRecs} movs={movs} setMovs={setMovs} user={user}/>;
+  }
 
   // HomeScreen
-  return <HomeScreen alm={alm} recs={recs} setArea={setArea} user={user} onLogout={logout}/>;
+  return <HomeScreen alm={alm} recs={recs} setArea={setArea} user={user} onLogout={logout} permisos={perm}/>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
